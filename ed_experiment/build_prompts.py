@@ -19,9 +19,10 @@ nltk.download("punkt", quiet=True)
 DOMAINS = {
     "wiki":   ("wikipedia",        "20220301.en", 400),
     "news":   ("cc_news",          None,          200),
-    "fiction":("bookcorpusopen",   None,          120),
+    "fiction":("ai2_arc",          "ARC-Challenge", 120),
     "code":   ("code_search_net",  "python",       80),
 }
+
 
 OUT_PATH = "prompts/prompts.jsonl"
 os.makedirs("prompts", exist_ok=True)
@@ -53,14 +54,17 @@ def sample_cc_news(n):
             break
     return random.sample(sents, n)
 
-def sample_bookcorpus(n):
-    ds = load_dataset("bookcorpusopen", split="train", streaming=True, trust_remote_code=True)
+def sample_arc(n):
+    ds = load_dataset("ai2_arc", "ARC-Challenge", split="train", streaming=True)
     sents = []
-    for row in ds.take(30_000):
-        sents.extend(to_sentences(row["text"]))
+    for row in ds.take(10_000):
+        q, a = row["question"]["stem"], row["answerKey"]
+        if q and a and len(q.split()) > 4:
+            sents.append(f"{q.strip()} (Answer: {a.strip()})")
         if len(sents) > n*3:
             break
     return random.sample(sents, n)
+
 
 def sample_code(n):
     ds = load_dataset("code_search_net", "python", split="train", streaming=True, trust_remote_code=True)
@@ -80,7 +84,7 @@ def sample_code(n):
 SAMPLERS = {
     "wiki": sample_wiki,
     "news": sample_cc_news,
-    "fiction": sample_bookcorpus,
+    "fiction": sample_arc,
     "code": sample_code,
 }
 
