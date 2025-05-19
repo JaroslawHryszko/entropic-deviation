@@ -57,36 +57,57 @@ def sample_cc_news(n):
 
 def sample_arc(n):
     import json
-    ds = load_dataset("ai2_arc", "ARC-Challenge", split="train", streaming=True)
+    ds = load_dataset("ai2_arc", "ARC-Challenge", split="train", trust_remote_code=True)
     sents = []
-    for row in ds.take(10_000):
-        if isinstance(row, str):  # JSON string in streaming mode
-            row = json.loads(row)
 
-        q = row.get("question", {}).get("stem", "")
+    try:
+        rows = list(ds)  # nie streaming, mamy całość
+    except Exception as e:
+        print("💥 Failed to load ARC:", e)
+        return []
+
+    for row in rows:
+        if isinstance(row, str):
+            try:
+                row = json.loads(row)
+            except Exception:
+                continue
+
+        if not isinstance(row, dict):
+            continue
+
+        q = row.get("question", {})
+        if isinstance(q, str):  # fallback in case it's flat
+            q = {"stem": q}
+
+        stem = q.get("stem", "")
         a = row.get("answerKey", "")
-        if q and a and len(q.split()) > 4:
-            sents.append(f"{q.strip()} (Answer: {a.strip()})")
+        if stem and a and len(stem.split()) > 4:
+            sents.append(f"{stem.strip()} (Answer: {a.strip()})")
         if len(sents) >= n:
             break
-    return random.sample(sents, n)
 
+    return sents
 
 
 def sample_code(n):
-    ds = load_dataset("code_search_net", "python", split="train", streaming=True, trust_remote_code=True)
-    prompts = []
-    for row in ds.take(n*3):
-        code = row["code"]
-        # take the first docstring line or function signature
-        m = re.search(r'"""(.*?)"""', code, re.S)
-        snippet = m.group(1).strip().split("\n")[0] if m else code.split("\n")[0]
+    ds = load_dataset("code_search_net", "python", split="train", trust_remote_code=True)
+    sents = []
+    for row in ds.shuffle(seed=42).select(range(len(ds))):
+        code = row.get("code", "")
+        if not code or not isinstance(code, str):
+            continue
+
+        match = re.search(r'"""(.*?)"""', code, re.S)
+        snippet = match.group(1).strip().split("\n")[0] if match else code.split("\n")[0]
         snippet = snippet.strip()
+
         if 3 <= len(snippet.split()) <= 30:
-            prompts.append(f"Explain what this code does:\n{snippet}")
-        if len(prompts) >= n:
+            sents.append(f"Explain what this code does:\n{snippet}")
+        if len(sents) >= n:
             break
-    return random.sample(prompts, n)
+    return sents
+
 
 SAMPLERS = {
     "wiki": sample_wiki,
