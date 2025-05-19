@@ -1,0 +1,4 @@
+torch==2.2.0          # GPU build, CUDA 12.x
+numpy pandas scipy tqdm
+statsmodels           # AR(1) & OLS
+llama_cpp_python      # GGUF loader – pip install llama-cpp-python==0.2.72
