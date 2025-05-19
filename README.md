@@ -1,4 +1,4 @@
-# Entropic-Deviation Pilot 🎲📊
+# Entropic-Deviation Pilot
 
 This repository contains the **exact code, prompts, and instructions** used
 to reproduce the pilot experiment reported in  
@@ -17,7 +17,7 @@ to reproduce the pilot experiment reported in
 ## Quick start (RTX 3090 / 24 GB)
 
 ```bash
-git clone https://github.com/JaroslawHryszko/entropic-deviation.git
+git clone https://github.com/yourhandle/entropic-deviation.git
 cd entropic-deviation
 
 python -m venv edenv && source edenv/bin/activate
@@ -39,3 +39,51 @@ python ed_experiment/ed.py --logits results/logits.pt \
 # 3) run the eight falsification tests (Table F1–F8)
 python ed_experiment/stats.py results/ed_results.csv \
                               --out results/results_Ftests.csv
+````
+
+The CSV files match the values reported in **Table 1** of the paper.
+If you add extra checkpoints or temperatures, the code automatically
+extends the analysis.
+
+---
+
+## File glossary
+
+| File                           | Purpose                                                       |
+| ------------------------------ | ------------------------------------------------------------- |
+| `generate.py`                  | streams completions with *llama-cpp-python*, dumps raw logits |
+| `ed.py`                        | converts logits → per-token ED → per-sequence mean            |
+| `stats.py`                     | implements the eight pre-registered tests (F1–F8)             |
+| `scripts/get_model.sh`         | convenience downloader for 8-B Q4 K M checkpoint              |
+| `notebooks/ed_visualise.ipynb` | optional histogram & correlation plots                        |
+
+---
+
+## Re-running the Seed-Sweep probe (BP1)
+
+A single command re-uses the same logits to compute
+the Kolmogorov–Smirnov statistic described in Section 5.2:
+
+```bash
+python ed_experiment/seed_sweep.py --logits results/logits.pt
+```
+
+---
+
+## Citation
+
+If you use this code, please cite:
+
+```
+@article{hryszko2025ed,
+  title={Entropic Deviation Reveals Proto-Agency in Large Language Models},
+  author={JaroslawHryszko},
+  journal={ArXiv (let's hope)},
+  year={2025}
+}
+```
+
+---
+
+© 2025 Jarosław Hryszko — MIT License
+
