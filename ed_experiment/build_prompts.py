@@ -14,6 +14,7 @@ import random, json, os, re, argparse, tqdm
 from datasets import load_dataset
 import nltk
 
+
 nltk.download("punkt", quiet=True)
 
 DOMAINS = {
@@ -55,15 +56,21 @@ def sample_cc_news(n):
     return random.sample(sents, n)
 
 def sample_arc(n):
+    import json
     ds = load_dataset("ai2_arc", "ARC-Challenge", split="train", streaming=True)
     sents = []
     for row in ds.take(10_000):
-        q, a = row["question"]["stem"], row["answerKey"]
+        if isinstance(row, str):  # JSON string in streaming mode
+            row = json.loads(row)
+
+        q = row.get("question", {}).get("stem", "")
+        a = row.get("answerKey", "")
         if q and a and len(q.split()) > 4:
             sents.append(f"{q.strip()} (Answer: {a.strip()})")
-        if len(sents) > n*3:
+        if len(sents) >= n:
             break
     return random.sample(sents, n)
+
 
 
 def sample_code(n):
