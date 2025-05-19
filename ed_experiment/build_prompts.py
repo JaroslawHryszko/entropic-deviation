@@ -36,7 +36,7 @@ def to_sentences(text, target_len=1, max_len=40):
     return out
 
 def sample_wiki(n):
-    ds = load_dataset("wikipedia", "20220301.en", split="train", streaming=True)
+    ds = load_dataset("wikipedia", "20220301.en", split="train", streaming=True, trust_remote_code=True)
     sents = []
     for row in ds.take(50_000):
         sents.extend(to_sentences(row["text"]))
@@ -45,7 +45,7 @@ def sample_wiki(n):
     return random.sample(sents, n)
 
 def sample_cc_news(n):
-    ds = load_dataset("cc_news", split="train", streaming=True)
+    ds = load_dataset("cc_news", split="train", streaming=True, trust_remote_code=True)
     sents = []
     for row in ds.take(20_000):
         sents.extend(to_sentences(row["text"]))
@@ -54,7 +54,7 @@ def sample_cc_news(n):
     return random.sample(sents, n)
 
 def sample_bookcorpus(n):
-    ds = load_dataset("bookcorpusopen", split="train", streaming=True)
+    ds = load_dataset("bookcorpusopen", split="train", streaming=True, trust_remote_code=True)
     sents = []
     for row in ds.take(30_000):
         sents.extend(to_sentences(row["text"]))
@@ -63,7 +63,7 @@ def sample_bookcorpus(n):
     return random.sample(sents, n)
 
 def sample_code(n):
-    ds = load_dataset("code_search_net", "python", split="train", streaming=True)
+    ds = load_dataset("code_search_net", "python", split="train", streaming=True, trust_remote_code=True)
     prompts = []
     for row in ds.take(n*3):
         code = row["code"]

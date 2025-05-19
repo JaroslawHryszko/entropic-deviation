@@ -1,4 +1,4 @@
-torch==2.2.0          # GPU build, CUDA 12.x
+torch==2.6.0          # GPU build, CUDA 12.x
 numpy
 pandas
 scipy
