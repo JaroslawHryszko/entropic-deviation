@@ -181,8 +181,10 @@ def process_batch(llm, prompts_batch, temps, max_tokens, out_file_prefix, gpu_id
                 # Continue processing despite errors
         
         # Clear some memory after each micro-batch
-        if hasattr(llm, "eval"):
-            llm.eval("clear_cache();")  # Clear KV cache if possible
+        if hasattr(llm, "reset_cache"):
+            llm.reset_cache()  # Modern API
+        elif hasattr(llm, "reset"):
+            llm.reset()  # Fallback         # Fallback to regular reset
         gc.collect()
         torch.cuda.empty_cache() if torch.cuda.is_available() else None
     
