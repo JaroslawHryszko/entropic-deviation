@@ -7,10 +7,10 @@
 
 # Directory setup
 SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
-MODEL_PATH="models/meta-llama-3-8b-instruct.Q4_K_M.gguf"
-PROMPTS_PATH="prompts/prompts.jsonl"
-RESULTS_DIR="results"
-LOG_DIR="logs"
+MODEL_PATH="ed_experiment/models/meta-llama-3-8b-instruct.Q4_K_M.gguf"
+PROMPTS_PATH="ed_experiment/prompts/prompts.jsonl"
+RESULTS_DIR="ed_experiment/results"
+LOG_DIR="ed_experiment/logs"
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 
 # Create necessary directories
