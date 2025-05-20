@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-generate_multi_gpu.py - Run language model inference on multiple GPUs in parallel
+generate_single_gpu.py - Run language model inference on a single GPU
 
 EXPERIMENT SUMMARY:
 1. Study of entropic deviation (ED) in large language models
@@ -8,7 +8,7 @@ EXPERIMENT SUMMARY:
 3. This may indicate "proto-agency" or non-random behavior in language models
 4. Experiment collects logits across multiple temperatures (0.7, 1.0, 1.3)
 5. Uses domain-diverse prompts (Wikipedia, News, Fiction, Code)
-6. Runs parallel inference on multiple GPUs for efficiency
+6. Runs inference on a single GPU for simplicity and reliability
 7. Preserves all data needed for statistical falsification tests (F1-F8)
 8. Maintains experiment integrity with consistent parameters
 
@@ -22,7 +22,6 @@ import torch
 import numpy as np
 import tqdm
 import logging
-import threading
 import time
 from datetime import datetime
 from llama_cpp import Llama
@@ -30,7 +29,7 @@ from llama_cpp import Llama
 # Configure logger
 def setup_logger(log_file=None):
     """Set up logging to console and optionally to file"""
-    logger = logging.getLogger("multi_gpu_inference")
+    logger = logging.getLogger("single_gpu_inference")
     logger.setLevel(logging.INFO)
     formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
     
@@ -65,29 +64,23 @@ def load_prompts(path):
         logger.error(f"Error loading prompts: {e}")
         raise
 
-def split_prompts(prompts, gpu_split_ratio=0.5):
-    """Split prompts between GPUs according to the provided ratio."""
-    split_point = int(len(prompts) * gpu_split_ratio)
-    return prompts[:split_point], prompts[split_point:]
-
-def process_batch(llm, prompts_batch, temps, max_tokens, out_file_prefix, gpu_id):
+def process_prompts(llm, prompts, temps, max_tokens, out_file):
     """
-    Process a batch of prompts on a specific GPU.
+    Process all prompts on a single GPU.
     
-    EXPERIMENT POINTS 1-4, 6-7: This function:
+    EXPERIMENT POINTS 1-4, 7: This function:
     - Runs model inference across multiple prompts and temperatures
     - Collects logits for every token generated
     - Preserves association between logits, prompts, and temperature settings
-    - Ensures results from each GPU are saved separately for later analysis
+    - Ensures results are saved for later analysis
     """
-    logger.info(f"GPU {gpu_id}: Starting to process {len(prompts_batch)} prompts")
+    logger.info(f"Starting to process {len(prompts)} prompts with {len(temps)} temperatures")
     start_time = time.time()
     
     out_logits, meta = [], []
     
     # Temp file for periodic saving
-    temp_out_file = f"{out_file_prefix}_gpu{gpu_id}_temp.pt"
-    final_out_file = f"{out_file_prefix}_gpu{gpu_id}.pt"
+    temp_out_file = f"{os.path.splitext(out_file)[0]}_temp.pt"
     
     # Check if we have previously saved results to resume from
     if os.path.exists(temp_out_file):
@@ -105,14 +98,17 @@ def process_batch(llm, prompts_batch, temps, max_tokens, out_file_prefix, gpu_id
         processed_pairs = set()
     
     # Create list of combinations to process (excluding already processed ones)
-    combinations = [(t, p) for t, p in itertools.product(temps, prompts_batch) 
+    combinations = [(t, p) for t, p in itertools.product(temps, prompts) 
                     if (p, t) not in processed_pairs]
     
-    # Save interval - after every ~10% of the remaining combinations
-    save_interval = max(1, len(combinations) // 10)
+    total_combinations = len(combinations)
+    logger.info(f"Processing {total_combinations} prompt-temperature combinations")
+    
+    # Save interval - after every ~5% of the remaining combinations or every 20, whichever is less
+    save_interval = min(20, max(1, total_combinations // 20))
     
     # Process combinations
-    for idx, (t, prompt) in enumerate(tqdm.tqdm(combinations, desc=f"GPU {gpu_id}", position=gpu_id)):
+    for idx, (t, prompt) in enumerate(tqdm.tqdm(combinations, desc="Processing")):
         try:
             # Tokenize input
             input_tokens = llm.tokenize(prompt.encode('utf-8'))
@@ -140,14 +136,13 @@ def process_batch(llm, prompts_batch, temps, max_tokens, out_file_prefix, gpu_id
                 meta.append({
                     "prompt": prompt, 
                     "temp": t, 
-                    "seq_len": logits_array.shape[0], 
-                    "gpu_id": gpu_id,
+                    "seq_len": logits_array.shape[0],
                     "timestamp": datetime.now().isoformat()
                 })
                 
                 # Log progress periodically
                 if (idx + 1) % 5 == 0:
-                    logger.info(f"GPU {gpu_id} - Processed {idx + 1}/{len(combinations)}: "
+                    logger.info(f"Processed {idx + 1}/{total_combinations}: "
                                 f"prompt length: {len(prompt.split())}, temp: {t}, "
                                 f"output tokens: {logits_array.shape[0]}")
                 
@@ -155,41 +150,40 @@ def process_batch(llm, prompts_batch, temps, max_tokens, out_file_prefix, gpu_id
                 if (idx + 1) % save_interval == 0:
                     try:
                         torch.save({"logits": out_logits, "meta": meta}, temp_out_file)
-                        logger.info(f"GPU {gpu_id} - Saved {len(out_logits)} results to temp file")
+                        logger.info(f"Saved {len(out_logits)} results to temp file")
                     except Exception as e:
-                        logger.error(f"GPU {gpu_id} - Error saving temp file: {e}")
+                        logger.error(f"Error saving temp file: {e}")
             else:
-                logger.warning(f"GPU {gpu_id} - Cannot access logits for prompt: '{prompt[:30]}...'")
+                logger.warning(f"Cannot access logits for prompt: '{prompt[:30]}...'")
                 
         except Exception as e:
-            logger.error(f"GPU {gpu_id} - Error processing prompt '{prompt[:30]}...': {e}")
+            logger.error(f"Error processing prompt '{prompt[:30]}...': {e}")
             # Continue with next prompt rather than terminating entire batch
     
-    # Final save for this GPU's results
+    # Final save of results
     try:
         if out_logits:
-            torch.save({"logits": out_logits, "meta": meta}, final_out_file)
-            logger.info(f"GPU {gpu_id} - Saved final file {final_out_file} with {len(out_logits)} results")
+            torch.save({"logits": out_logits, "meta": meta}, out_file)
+            logger.info(f"Saved final file {out_file} with {len(out_logits)} results")
             
             if os.path.exists(temp_out_file):
                 os.remove(temp_out_file)
-                logger.info(f"GPU {gpu_id} - Removed temp file {temp_out_file}")
+                logger.info(f"Removed temp file {temp_out_file}")
         else:
-            logger.warning(f"GPU {gpu_id} - No results to save")
+            logger.warning(f"No results to save")
     except Exception as e:
-        logger.error(f"GPU {gpu_id} - Error saving final file: {e}")
+        logger.error(f"Error saving final file: {e}")
     
     elapsed_time = time.time() - start_time
-    logger.info(f"GPU {gpu_id} - Processing complete in {elapsed_time:.2f} seconds")
+    logger.info(f"Processing complete in {elapsed_time:.2f} seconds ({elapsed_time/60:.2f} minutes)")
 
 def main():
     """
-    Main function to parse arguments and orchestrate parallel processing
-    on multiple GPUs.
+    Main function to parse arguments and run the model on a single GPU.
     """
     # Parse command line arguments
     parser = argparse.ArgumentParser(
-        description="Generate token logits from language models running on multiple GPUs in parallel "
+        description="Generate token logits from language models running on a single GPU "
                     "for entropic deviation analysis",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
@@ -201,20 +195,18 @@ def main():
                       help="Maximum number of tokens to generate")
     parser.add_argument("--n_ctx", type=int, default=2048, 
                       help="Context size for the model")
-    parser.add_argument("--out", default="logits", 
-                      help="Output filename prefix")
+    parser.add_argument("--out", default="logits.pt", 
+                      help="Output filename")
     parser.add_argument("--log", default=None, 
                       help="Path to log file (default: console only)")
-    parser.add_argument("--gpu_split", type=float, default=0.5, 
-                      help="Ratio for splitting prompts between GPUs (0-1.0)")
     parser.add_argument("--chat_format", default="llama-3", 
                       help="Chat format (e.g., llama-3, chatml)")
-    parser.add_argument("--combine", action="store_true", 
-                      help="Combine results from both GPUs into one file")
     parser.add_argument("--n_batch", type=int, default=1024, 
                       help="Batch size for the model")
-    parser.add_argument("--resume", action="store_true",
-                      help="Resume from previous run if temporary files exist")
+    parser.add_argument("--gpu_id", type=int, default=0,
+                      help="GPU ID to use (if multiple GPUs are available)")
+    parser.add_argument("--max_prompts", type=int, default=None,
+                      help="Maximum number of prompts to process (for testing)")
     args = parser.parse_args()
 
     # Set up logger
@@ -224,9 +216,13 @@ def main():
 
     # Check if CUDA is available
     if torch.cuda.is_available():
-        logger.info(f"CUDA available: {torch.cuda.device_count()} devices")
-        for i in range(torch.cuda.device_count()):
-            logger.info(f"  GPU {i}: {torch.cuda.get_device_name(i)}")
+        device_count = torch.cuda.device_count()
+        logger.info(f"CUDA available: {device_count} devices")
+        if args.gpu_id >= device_count:
+            logger.error(f"Requested GPU ID {args.gpu_id} is not available. "
+                        f"Only {device_count} GPUs detected.")
+            return
+        logger.info(f"Using GPU {args.gpu_id}: {torch.cuda.get_device_name(args.gpu_id)}")
     else:
         logger.error("CUDA not available! CUDA support is required.")
         return
@@ -243,98 +239,38 @@ def main():
         if not all_prompts:
             logger.error("No prompts to process")
             return
+            
+        # Apply prompt limit if specified (useful for testing)
+        if args.max_prompts is not None and args.max_prompts > 0:
+            if len(all_prompts) > args.max_prompts:
+                logger.info(f"Limiting to first {args.max_prompts} prompts (of {len(all_prompts)})")
+                all_prompts = all_prompts[:args.max_prompts]
     except Exception as e:
         logger.error(f"Failed to load prompts: {e}")
         return
-    
-    # Split prompts for two GPUs
-    prompts_gpu0, prompts_gpu1 = split_prompts(all_prompts, args.gpu_split)
-    logger.info(f"Assigned {len(prompts_gpu0)} prompts to GPU 0 and {len(prompts_gpu1)} to GPU 1")
 
     try:
-        # Initialize model on GPU 0
-        logger.info("Initializing model on GPU 0...")
-        llm_gpu0 = Llama(
+        # Initialize model on selected GPU
+        logger.info(f"Initializing model on GPU {args.gpu_id}...")
+        llm = Llama(
             model_path=args.model, 
             n_gpu_layers=-1,        # All layers on GPU
             n_ctx=args.n_ctx, 
             chat_format=args.chat_format,
             logits_all=True,        # CRITICAL: Collect logits for all tokens
-            main_gpu=0,             # Assign to GPU 0
-            tensor_split=[1.0, 0.0], # 100% on GPU 0
+            main_gpu=args.gpu_id,   # Specify which GPU to use
             verbose=True,
             n_batch=args.n_batch,
             use_mlock=True          # Prevent memory from being swapped out
         )
         
-        # Quick model test to verify GPU 0 is working
-        logger.info("Testing model on GPU 0...")
-        test_result = llm_gpu0("Test.", max_tokens=5)
-        logger.info(f"GPU 0 test output: {test_result['choices'][0]['text']}")
+        # Quick model test to verify GPU is working
+        logger.info("Testing model...")
+        test_result = llm("Test.", max_tokens=5)
+        logger.info(f"Test output: {test_result['choices'][0]['text']}")
         
-        # Initialize model on GPU 1
-        logger.info("Initializing model on GPU 1...")
-        llm_gpu1 = Llama(
-            model_path=args.model, 
-            n_gpu_layers=-1,
-            n_ctx=args.n_ctx, 
-            chat_format=args.chat_format,
-            logits_all=True,
-            main_gpu=1,             # Assign to GPU 1
-            tensor_split=[0.0, 1.0], # 100% on GPU 1
-            verbose=True,
-            n_batch=args.n_batch,
-            use_mlock=True
-        )
-        
-        # Quick model test to verify GPU 1 is working
-        logger.info("Testing model on GPU 1...")
-        test_result = llm_gpu1("Test.", max_tokens=5)
-        logger.info(f"GPU 1 test output: {test_result['choices'][0]['text']}")
-        
-        # EXPERIMENT POINT 6: Run parallel processing on two GPUs
-        logger.info("Starting parallel processing threads...")
-        
-        thread_gpu0 = threading.Thread(
-            target=process_batch, 
-            args=(llm_gpu0, prompts_gpu0, args.temps, args.max_tokens, args.out, 0)
-        )
-        
-        thread_gpu1 = threading.Thread(
-            target=process_batch, 
-            args=(llm_gpu1, prompts_gpu1, args.temps, args.max_tokens, args.out, 1)
-        )
-        
-        # Start threads
-        thread_gpu0.start()
-        thread_gpu1.start()
-        
-        # Wait for both threads to complete
-        thread_gpu0.join()
-        thread_gpu1.join()
-        
-        logger.info("Processing on both GPUs complete.")
-        
-        # EXPERIMENT POINT 7: Combine results from both GPUs if requested
-        if args.combine:
-            try:
-                logger.info("Combining results from both GPUs...")
-                results_gpu0 = torch.load(f"{args.out}_gpu0.pt")
-                results_gpu1 = torch.load(f"{args.out}_gpu1.pt")
-                
-                # Check if we have logits in both files
-                if "logits" in results_gpu0 and "logits" in results_gpu1:
-                    combined_logits = results_gpu0["logits"] + results_gpu1["logits"]
-                    combined_meta = results_gpu0["meta"] + results_gpu1["meta"]
-                    
-                    combined_file = f"{args.out}_combined.pt"
-                    torch.save({"logits": combined_logits, "meta": combined_meta}, combined_file)
-                    logger.info(f"Combined results from both GPUs saved to {combined_file}")
-                    logger.info(f"Total combined samples: {len(combined_logits)}")
-                else:
-                    logger.error("Missing logits in one or both result files")
-            except Exception as e:
-                logger.error(f"Error combining results: {e}")
+        # Process all prompts
+        process_prompts(llm, all_prompts, args.temps, args.max_tokens, args.out)
         
         logger.info("==== Experiment data collection complete ====")
         logger.info("Next steps: Run 'ed.py' to compute entropic deviation metrics from collected logits")
