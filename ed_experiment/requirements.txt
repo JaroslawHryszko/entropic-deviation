@@ -1,9 +1,16 @@
-torch==2.6.0          # GPU build, CUDA 12.x
+# Core libraries
+torch		          # GPU build, CUDA 12.x
 numpy
 pandas
 scipy
 statsmodels           # AR(1) & OLS
-llama_cpp_python      # GGUF loader – pip install llama-cpp-python==0.2.72
 datasets==2.*
 nltk
 tqdm
+psutil                # For monitoring GPU and CPU usage
+logging               # For logging in multi_gpu script
+threading             # For parallel processing
+
+# NOTE: The llama-cpp-python package needs to be installed separately
+# with GPU support using the install_gpu.sh (Linux/Mac) or
+# install_gpu.bat (Windows) script, not directly from this file
