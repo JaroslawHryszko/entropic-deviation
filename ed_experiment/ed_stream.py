@@ -37,7 +37,7 @@ def main():
         description="Strumieniowe obliczanie ED na checkpointach"
     )
     ap.add_argument(
-        "--pattern", required=True,
+        "--pattern", default="logits_gpu*_chkpt_*.pt",
         help="Glob pattern do checkpointów: e.g. 'logits_gpu*_chkpt_*.pt'"
     )
     ap.add_argument(
