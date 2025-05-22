@@ -80,7 +80,10 @@ def load_prompts(path):
                 continue
             if line.startswith('{'):
                 try:
-                    prompts.append(json.loads(line)['prompt'])
+                    #prompts.append(json.loads(line)['prompt'])
+                    record = json.loads(line)
+                    prompt = f"{record['domain']}: {record['prompt']}"
+                    prompts.append(prompt)
                 except Exception:
                     continue
             else:
