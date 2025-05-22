@@ -30,13 +30,14 @@ Entropic Deviation (ED) measures how much a model's token probability distributi
 | `calculate_metrics.py` | Eight falsification tests (F1-F8) |
 | `prompts/prompts.jsonl` | 800 pre-built prompts across domains |
 | `requirements.txt` | Python dependencies |
-| `results/` | Output directory for experiment results |
+| `results/` | Experiment results |
+| `prompts/` | Prompts - see below |
 
 ## Requirements
 
 - Python 3.x
 - PyTorch 2.6.0 (with CUDA support)
-- NVIDIA GPU with 24GB+ VRAM (RTX 3090 or better recommended)
+- NVIDIA GPU (min. Pascal architecture)
 - Dependencies listed in `requirements.txt`:
   - llama_cpp_python (for GGUF model loading)
   - numpy, pandas, scipy
@@ -91,7 +92,7 @@ The project runs eight falsification tests on the collected data:
 
 ## Experimental Results
 
-Our multi-architecture experiment across three models yielded compelling evidence for structured behavioral patterns:
+My multi-architecture experiment across three models yielded compelling evidence for structured behavioral patterns:
 
 - **Models tested**: Llama-3-8B, Phi-3-mini-4K, Mistral-7B
 - **Total samples**: 7,200 (800 prompts × 3 temperatures × 3 models)
