@@ -32,6 +32,7 @@ Entropic Deviation (ED) measures how much a model's token probability distributi
 | `requirements.txt` | Python dependencies |
 | `results/` | Experiment results |
 | `prompts/` | Prompts - see below |
+| `prompts/build_prompts.py` | Prompts scapping script |
 
 ## Requirements
 
@@ -108,7 +109,7 @@ My multi-architecture experiment across three models yielded compelling evidence
 
 ## Building Custom Prompts
 
-Use the domain-balanced prompt construction:
+Experiment uses the domain-balanced prompt construction:
 - Wikipedia articles (400 prompts)
 - News articles (200 prompts)
 - Fiction (120 prompts)
@@ -124,13 +125,6 @@ Tested architectures:
 - **Mistral-7B-Instruct-v0.1** (GGUF Q4_K_M)
 
 All models use 4-bit quantization for computational efficiency while preserving representational capacity.
-
-## Hardware Requirements
-
-- **Recommended**: 2× NVIDIA RTX 3090 (24GB VRAM each)
-- **Minimum**: 1× GPU with 16GB+ VRAM
-- **RAM**: 32GB+ system memory
-- **Storage**: NVMe SSD for model caching
 
 ## Extending the Framework
 
