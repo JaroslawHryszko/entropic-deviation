@@ -2,7 +2,9 @@
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 
-A research framework for investigating proto-agency in Large Language Models through entropic deviation (ED) analysis. This project implements the methodology described in *"Emergence of Proto-Agency via Entropic Deviation in High-Scale LLMs"*.
+A research framework for investigating proto-agency in Large Language Models through entropic deviation (ED) analysis. This project implements the methodology described in *"Emergence of Proto-Agency via Entropic Deviation in High-Scale LLMs"*:
+
+https://zenodo.org/records/15494181
 
 ## Overview
 
@@ -148,18 +150,15 @@ If you use this code in your research, please cite:
 @article{hryszko2025ed,
   title={Emergence of Proto-Agency via Entropic Deviation in High-Scale LLMs},
   author={Jarosław Hryszko},
-  journal={arXiv preprint},
+  journal={Zenodo},
+  doi={https://doi.org/10.5281/zenodo.15494181},
   year={2025}
 }
 ```
 
 ## Contributing
 
-Contributions are welcome! Please see our guidelines for:
-- Adding new model architectures
-- Implementing additional behavioral probes
-- Extending statistical test battery
-- Improving computational efficiency
+Contributions are welcome!
 
 ## License
 
