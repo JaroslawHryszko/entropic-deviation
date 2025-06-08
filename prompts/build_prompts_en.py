@@ -18,10 +18,10 @@ import nltk
 nltk.download("punkt", quiet=True)
 nltk.download("punkt_tab", quiet=True)
 
-# Poprzednie wartości:
+# Previous values:
 # "wiki": 400, "news": 200, "fiction": 120, "code": 80 (razem 800)
-# Po analizie, domeny wiki, news i fiction dają około 700 promptów
-# Domyślnie wygenerujemy 100 przykładów kodu
+# After analysis, the wiki, news and fiction domains give about 700 prompts
+# By default we will generate 100 code examples
 DOMAINS = {
     "wiki":   ("wikipedia",        "20220301.en", 400),
     "news":   ("cc_news",          None,          200),
@@ -66,7 +66,7 @@ def sample_arc(n):
     sents = []
 
     try:
-        rows = list(ds)  # nie streaming, mamy całość
+        rows = list(ds)  # not streaming, we have the entire dataset
     except Exception as e:
         print("💥 Failed to load ARC:", e)
         return []
@@ -100,7 +100,7 @@ def sample_code(n):
         ds = load_dataset("code_search_net", "python", split="train", trust_remote_code=True)
         sents = []
         
-        # Jeśli dataframe jest pusty, przerwij wcześnie
+        # If the dataframe is empty, exit early
         if len(ds) == 0:
             print("💥 Warning: code_search_net dataset is empty")
             return []
@@ -117,7 +117,7 @@ def sample_code(n):
                     snippet = match.group(1).strip().split("\n")[0] if match else code.split("\n")[0]
                     snippet = snippet.strip()
                 except (AttributeError, IndexError):
-                    # Jeśli match nie istnieje lub indeks jest niepoprawny
+                    # If match does not exist or the index is invalid
                     snippet = code.split("\n")[0] if code else ""
                     snippet = snippet.strip()
 
@@ -133,7 +133,7 @@ def sample_code(n):
         return sents
     except Exception as e:
         print(f"💥 Failed to load code_search_net: {e}")
-        # Fallback - generuj prostsze przykłady kodu
+        # Fallback — generate simpler code examples
         sents = []
         for i in range(n):
             sents.append(f"Explain what this code does:\ndef function_{i}(x): return x * 2")
@@ -151,13 +151,13 @@ def main():
     random.seed(42)
     all_prompts = []
     
-    # Zbieramy próbki ze wszystkich domen
+    # Collect samples from all domains
     for dom, (ds_name, cfg, quota) in DOMAINS.items():
         print(f"sampling {quota} from {ds_name} …")
         samples = SAMPLERS[dom](quota)
         
         if dom == "code" and len(samples) == 0:
-            # Jeśli nie udało się pobrać przykładów kodu, generujemy fallback
+            # If we failed to get code examples for the 'code' domain, generate fallback
             print(f"⚠️ Failed to get examples for domain 'code', generating {quota} fallback examples")
             for i in range(quota):
                 fallback_prompt = f"Explain what this code does:\ndef function_{i}(x): return x * 2"
@@ -167,7 +167,7 @@ def main():
                     "len": len(fallback_prompt.split())
                 })
         else:
-            # Dodajemy próbki z tej domeny
+            # Add samples from this domain
             for p in samples:
                 all_prompts.append({
                     "prompt": p,
@@ -175,7 +175,7 @@ def main():
                     "len": len(p.split())
                 })
     
-    # Wyświetl statystyki końcowe
+    # Display final statistics
     domain_counts = {dom: sum(1 for p in all_prompts if p["domain"] == dom) for dom in DOMAINS.keys()}
     for dom, count in domain_counts.items():
         print(f"Domain '{dom}': {count} examples")

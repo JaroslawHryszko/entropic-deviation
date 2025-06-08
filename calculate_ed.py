@@ -14,7 +14,12 @@ def parse_index(fn):
     m = re.search(r'_chkpt_(\d+)\.pt$', fn)
     return int(m.group(1)) if m else float('inf')
 
-def process_one_bundle(fp, out_csv, write_header, model_name="Llama-3-8B-Q4"):
+def process_one_bundle(fp, out_csv, write_header, model_name):
+    size_map = {
+    "Llama-3-8B-Q4": 8_000_000_000,
+    "Mistral-7B": 7_300_000_000,
+    "Phi-3-mini-4k": 3_800_000_000
+    }
     bundle = torch.load(fp, map_location='cpu')
     seqs, meta = bundle["logits"], bundle["meta"]
     records = []
@@ -25,6 +30,11 @@ def process_one_bundle(fp, out_csv, write_header, model_name="Llama-3-8B-Q4"):
         rec["ED_std"]  = ed_t.std().item()
         rec["model"]   = model_name
         rec["timestamp_processed"] = datetime.now().isoformat()
+        rec["model_size"] = size_map.get(model_name, None)
+        rec["rank"] = i
+        rec["chkpt_id"] = parse_index(fp)
+        if "prompt" in rec and ":" in rec["prompt"]:
+            rec["domain"] = rec["prompt"].split(":", 1)[0].strip()
         records.append(rec)
     df = pd.DataFrame(records)
     df.to_csv(out_csv, mode='a', header=write_header, index=False)
@@ -45,7 +55,7 @@ def main():
         help="Ścieżka do wyniku CSV"
     )
     ap.add_argument(
-        "--model-name", default="Llama-3-8B-Q4",
+        "--model-name", default="Mistral-7B",
         help="Etykieta pola 'model' w CSV"
     )
     args = ap.parse_args()
