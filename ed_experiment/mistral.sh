@@ -1,0 +1,1 @@
+python ./generate_multi_gpu_lowmem.py --model "./models/mistral-7b-instruct-v0.1.Q4_K_M.gguf" --prompts "./prompts/prompts.jsonl" --max_tokens 64 --n_ctx 512 --sleep_time 2.0 --n_gpu_layers 32 --save_interval 5 --out "./results/" --log "./logs/log12-50.log"

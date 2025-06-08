@@ -7,7 +7,7 @@
 
 # Directory setup
 SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
-MODEL_PATH="ed_experiment/models/meta-llama-3-8b-instruct.Q4_K_M.gguf"
+MODEL_PATH="ed_experiment/models/mistral-7b-instruct-v0.1.Q4_K_M.gguf"
 PROMPTS_PATH="ed_experiment/prompts/prompts.jsonl"
 RESULTS_DIR="ed_experiment/results"
 LOG_DIR="ed_experiment/logs"
@@ -42,6 +42,8 @@ echo "Starting Entropic Deviation Experiment (Low Memory Mode)"
 echo "Model: $MODEL_PATH"
 echo "Prompts: $PROMPTS_PATH"
 echo "Timestamp: $TIMESTAMP"
+echo "Results dir: $RESULTS_DIR"
+echo "Log: $LOG_DIR/experiment_$TIMESTAMP.log"
 echo "====================================================="
 
 # Run the memory-optimized experiment
@@ -50,13 +52,13 @@ python "$SCRIPT_DIR/ed_experiment/generate_multi_gpu_lowmem.py" \
     --prompts "$PROMPTS_PATH" \
     --max_tokens 64 \
     --n_ctx 512 \
-    --n_batch 32 \
-    --micro_batch 2 \
+#    --n_batch 32 \
+#    --micro_batch 2 \
     --sleep_time 2.0 \
     --n_gpu_layers 32 \
     --save_interval 5 \
-    --out "$RESULTS_DIR/logits_$TIMESTAMP" \
-    --log "$LOG_DIR/experiment_$TIMESTAMP.log"
+    --out "$RESULTS_DIR" \
+    --log "$LOG_DIR/ed_generate_$TIMESTAMP.log"
 
 # Check if the experiment completed successfully
 if [ $? -eq 0 ]; then
@@ -65,15 +67,15 @@ if [ $? -eq 0 ]; then
     echo "Log saved to: $LOG_DIR/experiment_$TIMESTAMP.log"
     
     # Run the ED calculation on the results
-    echo "Computing Entropic Deviation metrics..."
-    python "$SCRIPT_DIR/ed_experiment/ed.py" \
-        --logits "$RESULTS_DIR/logits_${TIMESTAMP}_combined.pt" \
-        --out "$RESULTS_DIR/ed_results_$TIMESTAMP.csv"
+#    echo "Computing Entropic Deviation metrics..."
+#    python "$SCRIPT_DIR/ed_experiment/ed.py" \
+#        --logits "$RESULTS_DIR/logits_${TIMESTAMP}_combined.pt" \
+#        --out "$RESULTS_DIR/ed_results_$TIMESTAMP.csv"
     
-    # Run the statistical tests
-    echo "Running statistical tests..."
-    python "$SCRIPT_DIR/ed_experiment/stats.py" "$RESULTS_DIR/ed_results_$TIMESTAMP.csv" \
-        --out "$RESULTS_DIR/results_Ftests_$TIMESTAMP.csv"
+#    # Run the statistical tests
+#    echo "Running statistical tests..."
+#    python "$SCRIPT_DIR/ed_experiment/stats.py" "$RESULTS_DIR/ed_results_$TIMESTAMP.csv" \
+#        --out "$RESULTS_DIR/results_Ftests_$TIMESTAMP.csv"
     
     echo "====================================================="
     echo "Entropic Deviation Experiment Pipeline Complete!"
