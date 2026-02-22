@@ -136,6 +136,13 @@ ENV/
 env.bak/
 venv.bak/
 
+# sztuczny czlowiek stuff
+models/
+
+# Claude Code
+CLAUDE.md
+.claude/
+
 # Spyder project settings
 .spyderproject
 .spyproject
@@ -172,10 +179,3 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
-
-# sztuczny czlowiek stuff
-models/
-
-# Claude Code
-CLAUDE.md
-.claude/
