@@ -2,13 +2,11 @@
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 
-A research framework for investigating proto-agency in Large Language Models through entropic deviation (ED) analysis. This project implements the methodology described in *"Emergence of Proto-Agency via Entropic Deviation in High-Scale LLMs"*:
-
-https://zenodo.org/records/15494181
+A research framework for studying randomness and non-randomness in Large Language Models through entropic deviation (ED) analysis.
 
 ## Overview
 
-Entropic Deviation (ED) measures how much a model's token probability distribution deviates from a uniform distribution. This metric may indicate "proto-agency" or non-random behavior in language models. This framework enables:
+Entropic Deviation (ED) measures how much a model's token probability distribution deviates from a uniform distribution. This metric quantifies systematic non-random patterns in LLM token generation. The framework enables:
 
 1. Generating responses from LLMs with various temperatures
 2. Collecting logits for each token
@@ -95,7 +93,7 @@ The project runs eight falsification tests on the collected data:
 
 ## Experimental Results
 
-My multi-architecture experiment across three models yielded compelling evidence for structured behavioral patterns:
+Multi-architecture experiment across three models yielded evidence for systematic non-random patterns in token generation:
 
 - **Models tested**: Llama-3-8B, Phi-3-mini-4K, Mistral-7B
 - **Total samples**: 7,200 (800 prompts × 3 temperatures × 3 models)
@@ -133,7 +131,7 @@ All models use 4-bit quantization for computational efficiency while preserving 
 - Add new model checkpoints in the `models/` directory
 - Modify domain distributions in prompt construction
 - Implement additional statistical tests in `calculate_metrics.py`
-- Extend behavioral-drift probes (see paper Appendix A)
+- Extend deviation analysis probes
 
 ## Recent Updates
 
@@ -148,7 +146,7 @@ If you use this code in your research, please cite:
 
 ```bibtex
 @article{hryszko2025ed,
-  title={Emergence of Proto-Agency via Entropic Deviation in High-Scale LLMs},
+  title={Entropic Deviation as a Measure of Non-Randomness in Large Language Models},
   author={Jarosław Hryszko},
   journal={Zenodo},
   doi={https://doi.org/10.5281/zenodo.15494181},
@@ -173,4 +171,4 @@ Contributions are welcome!
 
 ---
 
-**Note**: This research investigates emergent behavioral patterns in AI systems. The findings have implications for AI safety and should be considered in the context of responsible AI development.
+**Note**: This research investigates systematic non-random patterns in LLM token probability distributions.
