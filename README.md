@@ -3,152 +3,195 @@
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18732011.svg)](https://zenodo.org/records/18732011)
 
-A research framework for studying randomness and non-randomness in Large Language Models through entropic deviation (ED) analysis.
+A research framework for studying **randomness and non-randomness** in Large Language Models by measuring Entropic Deviation (ED) — the degree to which a model's token probability distribution deviates from uniform.
 
-## Overview
+## What is Entropic Deviation?
 
-Entropic Deviation (ED) measures how much a model's token probability distribution deviates from a uniform distribution. This metric quantifies systematic non-random patterns in LLM token generation. The framework enables:
+ED is defined as:
 
-1. Generating responses from LLMs with various temperatures
-2. Collecting logits for each token
-3. Computing entropy deviation metrics
-4. Running statistical tests to analyze the results
+```
+ED_t = KL(p || uniform) / log(|V|)
+```
 
-## Key Features
+where `p = softmax(logits)` and `|V|` is the vocabulary size. ED = 0 means uniform distribution (maximum randomness), ED = 1 means concentration on a single token (no randomness).
 
-- Multi-GPU support for parallel processing
-- Temperature variation (0.7, 1.0, 1.3) to test model behavior
-- Domain-diverse prompts (Wikipedia, News, Fiction, Code)
-- Statistical significance tests (F1-F8)
-- Simple CLI interface for running experiments
+## Pipeline Overview
 
-## Project Structure
+```
+prompts.jsonl → generate_logits.py → .pt checkpoints → calculate_ed.py → ed_results.csv → calculate_metrics.py → FTresults.csv
+```
 
-| Directory/File | Description |
-|----------------|-------------|
-| `calculate_ed.py` | Core implementation for computing entropic deviation |
-| `generate_logits.py` | Multi-GPU generation with logit collection |
-| `calculate_metrics.py` | Eight falsification tests (F1-F8) |
-| `prompts/prompts.jsonl` | 800 pre-built prompts across domains |
-| `requirements.txt` | Python dependencies |
-| `results/` | Experiment results |
-| `prompts/` | Prompts - see below |
-| `prompts/build_prompts.py` | Prompts scapping script |
+## Step-by-Step Guide
 
-## Requirements
-
-- Python 3.x
-- PyTorch 2.6.0 (with CUDA support)
-- NVIDIA GPU (min. Pascal architecture)
-- Dependencies listed in `requirements.txt`:
-  - llama_cpp_python (for GGUF model loading)
-  - numpy, pandas, scipy
-  - statsmodels (for AR(1) & OLS analysis)
-  - datasets, nltk, tqdm
-
-## Quick Start
+### 1. Clone and set up
 
 ```bash
-# Clone repository
 git clone https://github.com/JaroslawHryszko/entropic-deviation.git
 cd entropic-deviation
 
-# Set up environment
 python -m venv edenv && source edenv/bin/activate
 pip install -r requirements.txt
+pip install llama-cpp-python  # requires CUDA toolkit
+```
 
-# Download model (if needed)
-# Models should be placed in models/ directory
+### 2. Download a model
 
-# Multi-GPU workflow
+Place GGUF-quantized models in the `models/` directory. Example using `huggingface-cli`:
+
+```bash
+mkdir -p models
+
+# Qwen-2.5-32B (~20 GB)
+huggingface-cli download bartowski/Qwen2.5-32B-Instruct-GGUF \
+    --include "Qwen2.5-32B-Instruct-Q4_K_M.gguf" --local-dir models/
+
+# Gemma-2-27B (~17 GB)
+huggingface-cli download bartowski/gemma-2-27b-it-GGUF \
+    --include "gemma-2-27b-it-Q4_K_M.gguf" --local-dir models/
+
+# Llama-3.3-70B (~43 GB, requires 2 GPUs)
+huggingface-cli download bartowski/Llama-3.3-70B-Instruct-GGUF \
+    --include "Llama-3.3-70B-Instruct-Q4_K_M.gguf" --local-dir models/
+```
+
+### 3. Generate logits
+
+The inference engine auto-detects GPUs and spreads the model across all available devices.
+
+```bash
 python generate_logits.py \
-      --model models/llama-3-8b-instruct.Q4_K_M.gguf \
-      --prompts prompts/prompts.jsonl \
-      --temps 0.7 1.0 1.3 \
-      --max_tokens 128 \
-      --out logits_results
+    --model models/Qwen2.5-32B-Instruct-Q4_K_M.gguf \
+    --prompts prompts/prompts.jsonl \
+    --temps 0.7 1.0 1.3 \
+    --max_tokens 128 \
+    --out results/logits_qwen32b \
+    --save_interval 5 \
+    --log logs/qwen32b.log
+```
 
-# Compute entropic deviation
+Key options:
+- `--temps` — temperature values to test (default: 0.7 1.0 1.3)
+- `--max_tokens` — tokens to generate per prompt (default: 128)
+- `--save_interval` — checkpoint every N generations (default: 5)
+- `--resume` — resume from the last checkpoint
+- `--n_gpu_layers` — layers to offload to GPU (-1 = all, default)
+
+The script handles SIGINT/SIGTERM gracefully, saving an emergency checkpoint before exit.
+
+### 4. Compute Entropic Deviation
+
+```bash
 python calculate_ed.py \
-      --pattern "logits_results_gpu*_chkpt_*.pt" \
-      --out ed_results.csv \
-      --model-name "Llama-3-8B"
+    --pattern "results/logits_qwen32b_chkpt_*.pt" \
+    --out results/ed_results_qwen32b.csv \
+    --model-name "Qwen-2.5-32B"
+```
 
-# Run statistical tests
-python calculate_metrics.py ed_results.csv \
-      --out FTresults_llama3.csv
+Output CSV columns: `prompt, temp, seq_len, gen_time, ED_mean, ED_std, model, model_size, domain, rank, chkpt_id`.
+
+### 5. Run statistical tests (F1-F8)
+
+```bash
+python calculate_metrics.py results/ed_results_qwen32b.csv \
+    --out results/FTresults_qwen32b.csv
+```
+
+### 6. Repeat for each model
+
+Run steps 3-5 for each model in your experiment. To analyze all models together, concatenate ED results:
+
+```bash
+# Merge ED CSVs (skip headers from subsequent files)
+head -1 results/ed_results_qwen32b.csv > results/ed_results_combined.csv
+tail -n +2 -q results/ed_results_*.csv >> results/ed_results_combined.csv
+
+# Run combined analysis
+python calculate_metrics.py results/ed_results_combined.csv \
+    --out results/FTresults_combined.csv
+```
+
+### Alternative: run the full pipeline
+
+For a single model, the shell wrapper runs all three steps:
+
+```bash
+./run_entropic_deviation.sh
+```
+
+Edit the configuration variables at the top of the script to set model path, prompts, and output directories.
+
+## Prompt Sets
+
+The framework includes two prompt sets designed to test different hypotheses:
+
+| File | Prompts | Domains | Purpose |
+|------|---------|---------|---------|
+| `prompts/prompts.jsonl` | 800 | wiki, news, fiction, code | Domain prompts with semantic context |
+| `prompts/prompts_neutral.jsonl` | 1000 | empty, random, explicit, neutral, nonsense | Neutral prompts with minimal semantic constraint |
+
+The neutral prompts are designed to disentangle two hypotheses:
+- **H1**: Non-randomness is intrinsic to the model's learned representations
+- **H2**: Non-randomness is induced by the semantic constraints of the input prompts
+
+To rebuild prompts from source:
+
+```bash
+python prompts/build_prompts_en.py       # domain prompts (requires datasets library)
+python prompts/build_neutral_prompts.py   # neutral prompts (no external dependencies)
 ```
 
 ## Statistical Tests (F1-F8)
 
-The project runs eight falsification tests on the collected data:
+| Test | Null Hypothesis | Method |
+|------|----------------|--------|
+| F1 | Mean ED = 0 | One-sample t-test |
+| F2 | No temperature effect | One-way ANOVA + Tukey HSD |
+| F3 | No model size effect | OLS regression |
+| F4 | ED independent of temperature | Pearson correlation |
+| F5 | No autoregressive persistence | AR(1) coefficient |
+| F6 | ED independent of sequence length | Pearson correlation |
+| F7 | Uniform ED across domains | Kruskal-Wallis |
+| F8 | ED independent of generation rank | OLS slope |
 
-1. **F1**: Mean ED ≠ 0 (one-sample t-test)
-2. **F2**: Temperature effect (one-way ANOVA)
-3. **F3**: Model size slope effect
-4. **F4**: Correlation between ED and temperature
-5. **F5**: AR(1) coefficient test
-6. **F6**: Correlation between ED and sequence length
-7. **F7**: Domain uniformity test
-8. **F8**: Rank-independence test
+## Utility Scripts
 
-## Experimental Results
+- **`merge_checkpoints.py`** — merge multiple `.pt` checkpoint files into one:
+  ```bash
+  python merge_checkpoints.py --pattern "results/logits_*_chkpt_*.pt" --output merged.pt
+  ```
 
-Multi-architecture experiment across three models yielded evidence for systematic non-random patterns in token generation:
+## Project Structure
 
-- **Models tested**: Llama-3-8B, Phi-3-mini-4K, Mistral-7B
-- **Total samples**: 7,200 (800 prompts × 3 temperatures × 3 models)
-- **Key findings**: 6/8 falsification tests achieved astronomical significance (p < 10⁻¹⁰⁰)
+```
+entropic-deviation/
+├── generate_logits.py          # Step 1: multi-GPU logits generation
+├── calculate_ed.py             # Step 2: compute ED from checkpoints
+├── calculate_metrics.py        # Step 3: statistical tests F1-F8
+├── merge_checkpoints.py        # Utility: merge checkpoint files
+├── run_entropic_deviation.sh   # Full pipeline wrapper
+├── requirements.txt
+├── prompts/
+│   ├── prompts.jsonl           # 800 domain prompts
+│   ├── prompts_neutral.jsonl   # 1000 neutral prompts
+│   ├── build_prompts_en.py     # Domain prompt generator
+│   └── build_neutral_prompts.py # Neutral prompt generator
+├── results/                    # Experiment output (CSV)
+└── models/                     # GGUF models (gitignored)
+```
 
-### Key Results Summary
+## Requirements
 
-| Test | Llama-3-8B | Phi-3-mini | Mistral-7B | Combined |
-|------|------------|------------|------------|----------|
-| F1 (Mean ≠ 0) | < 10⁻¹⁵ | < 10⁻¹⁵ | < 10⁻¹⁵ | < 10⁻¹⁵ |
-| F2 (Temp effect) | 5.26×10⁻²⁷ | 2.11×10⁻¹⁴ | 1.73×10⁻⁷² | 5.55×10⁻⁶⁶ |
-| F5 (AR(1)) | 1.27×10⁻¹⁴³ | 1.97×10⁻¹⁴⁵ | 1.51×10⁻³⁸ | 3.50×10⁻²⁰⁰ |
-
-## Building Custom Prompts
-
-Experiment uses the domain-balanced prompt construction:
-- Wikipedia articles (400 prompts)
-- News articles (200 prompts)
-- Fiction (120 prompts)
-- Code snippets (80 prompts)
-
-The prompts are pre-built in `prompts/prompts.jsonl` with domain tags and length normalization.
-
-## Model Support
-
-Tested architectures:
-- **Meta-Llama-3-8B-Instruct** (GGUF Q4_K_M)
-- **Phi-3-mini-4K-Instruct** (GGUF Q4_K_M)
-- **Mistral-7B-Instruct-v0.1** (GGUF Q4_K_M)
-
-All models use 4-bit quantization for computational efficiency while preserving representational capacity.
-
-## Extending the Framework
-
-- Add new model checkpoints in the `models/` directory
-- Modify domain distributions in prompt construction
-- Implement additional statistical tests in `calculate_metrics.py`
-- Extend deviation analysis probes
-
-## Recent Updates
-
-- Multi-GPU support for parallel processing
-- Cross-architecture validation framework
-- Comprehensive falsification test battery
-- Enhanced statistical power analysis
+- Python 3.10+
+- PyTorch 2.x (with CUDA support)
+- NVIDIA GPU (Pascal architecture or newer)
+- `llama-cpp-python` (not in `requirements.txt` — install separately with CUDA support)
 
 ## Citation
-
-If you use this code in your research, please cite:
 
 ```bibtex
 @article{hryszko2025ed,
   title={Entropic Deviation as a Measure of Non-Randomness in Large Language Models},
-  author={Jarosław Hryszko},
+  author={Jaros{\l}aw Hryszko},
   journal={Zenodo},
   doi={10.5281/zenodo.18732011},
   url={https://zenodo.org/records/18732011},
@@ -156,21 +199,13 @@ If you use this code in your research, please cite:
 }
 ```
 
-## Contributing
-
-Contributions are welcome!
-
 ## License
 
-© 2025 Jarosław Hryszko — MIT License
+MIT License — see [LICENSE](LICENSE).
 
 ## Contact
 
-- **Author**: Jarosław Hryszko
-- **Institution**: Institute of Computer Science, Jagiellonian University, Kraków, Poland
+- **Author**: Jaroslaw Hryszko
+- **Institution**: Institute of Computer Science, Jagiellonian University, Krakow, Poland
 - **Email**: jaroslaw.hryszko@uj.edu.pl
 - **ORCID**: [0000-0002-4207-1080](https://orcid.org/0000-0002-4207-1080)
-
----
-
-**Note**: This research investigates systematic non-random patterns in LLM token probability distributions.

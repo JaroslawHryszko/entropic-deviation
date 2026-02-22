@@ -1,5 +1,5 @@
 # Core libraries
-torch		          # GPU build, CUDA 12.x
+torch                 # GPU build, CUDA 12.x
 numpy
 pandas
 scipy
@@ -7,6 +7,4 @@ statsmodels           # AR(1) & OLS
 datasets==2.*
 nltk
 tqdm
-psutil                # For monitoring GPU and CPU usage
-logging               # For logging in multi_gpu script
-threading             # For parallel processing
+psutil
