@@ -5,7 +5,7 @@ import os
 import torch
 
 def parse_index(fn):
-    # spodziewa się nazw: prefix_gpu{gpu_id}_chkpt_{n}.pt
+    # expects filenames like: prefix_chkpt_{n}.pt
     base = os.path.basename(fn)
     parts = base.split('_chkpt_')
     if len(parts) != 2:
@@ -22,7 +22,7 @@ def main():
     )
     p.add_argument(
         "--pattern", required=True,
-        help="Glob do plików checkpoint, np. 'logits_gpu*_chkpt_*.pt'"
+        help="Glob pattern for checkpoint files, e.g. 'logits_*_chkpt_*.pt'"
     )
     p.add_argument(
         "--output", default="logits_merged.pt",
@@ -39,7 +39,7 @@ def main():
     all_meta   = []
 
     for f in files:
-        data = torch.load(f, map_location="cpu")
+        data = torch.load(f, map_location="cpu", weights_only=False)
         logits = data.get("logits", [])
         meta   = data.get("meta", [])
         all_logits.extend(logits)

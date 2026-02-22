@@ -1,8 +1,14 @@
 #!/usr/bin/env python3
+"""
+generate_logits.py — Multi-GPU inference engine for Entropic Deviation.
+
+Loads a single GGUF model spread across all available GPUs,
+generates responses for all (prompt × temperature) combinations,
+and saves logit tensors to .pt checkpoint files.
+"""
 import argparse
 import json
 import os
-import subprocess
 import sys
 import gc
 import signal
@@ -14,62 +20,42 @@ import psutil
 import torch
 import numpy as np
 from llama_cpp import Llama
-import threading
+
 
 # --- Helpers -----------------------------------------------------------
 
 def setup_logger(log_file=None):
     """Configure console (and optional file) logging."""
-    logger = logging.getLogger("multi_gpu_inference")
-    logger.handlers.clear()  # avoid duplicate handlers
+    logger = logging.getLogger("ed_inference")
+    logger.handlers.clear()
     logger.setLevel(logging.INFO)
     fmt = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
     ch = logging.StreamHandler()
     ch.setFormatter(fmt)
     logger.addHandler(ch)
     if log_file:
+        os.makedirs(os.path.dirname(log_file) or ".", exist_ok=True)
         fh = logging.FileHandler(log_file)
         fh.setFormatter(fmt)
         logger.addHandler(fh)
     return logger
 
-def check_gpu_usage(gpu_id):
-    """Return (gpu_util_pct, used_memory_mb)."""
+
+def detect_gpus():
+    """Return number of available CUDA GPUs."""
     try:
+        import subprocess
         r = subprocess.run(
-            ['nvidia-smi', '-i', str(gpu_id),
-             '--query-gpu=utilization.gpu,memory.used',
-             '--format=csv,noheader,nounits'],
+            ['nvidia-smi', '--query-gpu=name', '--format=csv,noheader'],
             capture_output=True, text=True, check=True
         )
-        util, mem = map(int, r.stdout.strip().split(','))
-        return util, mem
+        count = len(r.stdout.strip().split('\n'))
+        return count
     except Exception:
-        return 0, 0
+        return 0
 
-def find_resume_point(prefix, gpu_id, combinations):
-    """
-    If final file exists, return (len(combinations), logits, meta).
-    Else if temp exists, load and compute how many combos done.
-    Otherwise return (0, [], []).
-    """
-    final_f = f"{prefix}_gpu{gpu_id}.pt"
-    tmp_f   = f"{prefix}_gpu{gpu_id}_temp.pt"
 
-    if os.path.exists(final_f):
-        logger.info(f"GPU{gpu_id}: loading final {final_f}")
-        data = torch.load(final_f, map_location='cpu')
-        return len(combinations), data['logits'], data['meta']
-
-    if os.path.exists(tmp_f):
-        logger.info(f"GPU{gpu_id}: loading temp {tmp_f}")
-        data = torch.load(tmp_f, map_location='cpu')
-        # assume meta entries == number of processed combos
-        return len(data.get('meta', [])), data.get('logits', []), data.get('meta', [])
-
-    return 0, [], []
-
-def load_prompts(path):
+def load_prompts(path, logger):
     """Read prompts from JSONL or plain TXT."""
     logger.info(f"Loading prompts from {path}")
     prompts = []
@@ -80,7 +66,6 @@ def load_prompts(path):
                 continue
             if line.startswith('{'):
                 try:
-                    #prompts.append(json.loads(line)['prompt'])
                     record = json.loads(line)
                     prompt = f"{record['domain']}: {record['prompt']}"
                     prompts.append(prompt)
@@ -91,144 +76,171 @@ def load_prompts(path):
     logger.info(f"Loaded {len(prompts)} prompts")
     return prompts
 
-def combination_gen(temps, prompts):
-    """Yield (temp, prompt) without building full list in memory."""
-    for t in temps:
-        for p in prompts:
-            yield t, p
 
-def save_and_exit(signum, frame):
-    """On SIGINT/SIGTERM, persist each GPU state and exit."""
-    for gpu_id, s in state.items():
-        prefix = s['prefix']
-        tf = f"{prefix}_gpu{gpu_id}_temp.pt"
-        torch.save({'logits': s['out_logits'], 'meta': s['meta']}, tf)
-        logger.info(f"GPU{gpu_id}: saved temp state to {tf}")
-    sys.exit(0)
+def find_resume_point(prefix):
+    """
+    Scan for existing checkpoints matching prefix_chkpt_*.pt
+    and return the highest checkpoint index found (= number of
+    generations already saved). Returns 0 if no checkpoints exist.
+    """
+    import glob, re
+    pattern = f"{prefix}_chkpt_*.pt"
+    files = glob.glob(pattern)
+    if not files:
+        return 0
+    indices = []
+    for fn in files:
+        m = re.search(r'_chkpt_(\d+)\.pt$', fn)
+        if m:
+            indices.append(int(m.group(1)))
+    return max(indices) if indices else 0
+
 
 # --- Main processing --------------------------------------------------
 
-state = {}  # for signal handler to persist
-
-def process_gpu(model_path, prompts, temps, max_tokens, prefix,
-                gpu_id, save_interval, reset_interval,
-                sleep_time, n_ctx, chat_format, n_gpu_layers):
-    torch.cuda.set_device(gpu_id)
-    llm = Llama(
-        model_path=model_path,
-        n_gpu_layers=n_gpu_layers,
-        n_ctx=n_ctx,
-        chat_format=chat_format,
-        logits_all=True,
-        main_gpu=gpu_id,
-        tensor_split=[1.0, 0.0] if gpu_id == 0 else [0.0, 1.0],
-        verbose=False
+def main():
+    p = argparse.ArgumentParser(
+        description="Generate logits for Entropic Deviation analysis"
     )
+    p.add_argument("--model", required=True, help="Path to GGUF model")
+    p.add_argument("--prompts", required=True, help="JSONL or TXT file with prompts")
+    p.add_argument("--temps", nargs="+", type=float,
+                   default=[0.7, 1.0, 1.3], help="Temperatures")
+    p.add_argument("--max_tokens", type=int, default=128)
+    p.add_argument("--n_ctx", type=int, default=512)
+    p.add_argument("--out", default="logits", help="Output prefix for checkpoint files")
+    p.add_argument("--log", default=None, help="Log file path")
+    p.add_argument("--save_interval", type=int, default=5,
+                   help="Checkpoint every N generations")
+    p.add_argument("--reset_interval", type=int, default=20,
+                   help="Full GC every N generations")
+    p.add_argument("--sleep_time", type=float, default=1.0,
+                   help="Sleep between generations (seconds)")
+    p.add_argument("--n_gpu_layers", type=int, default=-1,
+                   help="Number of layers to offload to GPU (-1 = all)")
+    p.add_argument("--resume", action="store_true",
+                   help="Resume from last checkpoint")
+    args = p.parse_args()
 
-    # build combos list only once for resume logic
-    combos = [(t, p) for t in temps for p in prompts]
-    resume_idx, out_logits, meta = find_resume_point(prefix, gpu_id, combos)
-    state[gpu_id] = {'prefix': prefix, 'out_logits': out_logits, 'meta': meta}
+    logger = setup_logger(args.log)
 
-    gen = combination_gen(temps, prompts)
-    processed = 0
+    # --- Detect GPUs and build tensor split ---
+    n_gpus = detect_gpus()
+    if n_gpus == 0:
+        logger.warning("No GPUs detected, running on CPU")
+        tensor_split = None
+    else:
+        tensor_split = [1.0 / n_gpus] * n_gpus
+        logger.info(f"Detected {n_gpus} GPU(s), tensor_split={tensor_split}")
 
-    for i, (t, prompt) in enumerate(gen):
-        if i < resume_idx:
-            continue
+    # --- Load prompts and build combinations ---
+    all_prompts = load_prompts(args.prompts, logger)
+    combos = [(t, prompt) for t in args.temps for prompt in all_prompts]
+    total = len(combos)
+    logger.info(f"Total combinations: {total} ({len(all_prompts)} prompts × {len(args.temps)} temps)")
 
-        util, mem = check_gpu_usage(gpu_id)
-        if util > 90:
-            # back off if GPU is too busy
-            time.sleep((util - 80) * 0.5)
+    # --- Resume logic ---
+    resume_idx = 0
+    if args.resume:
+        resume_idx = find_resume_point(args.out)
+        if resume_idx > 0:
+            logger.info(f"Resuming from checkpoint {resume_idx} ({resume_idx}/{total} done)")
+        else:
+            logger.info("No checkpoints found, starting from scratch")
 
-        llm.reset()
-        with torch.no_grad():
-            resp = llm(prompt, max_tokens=max_tokens, temperature=t, logprobs=5)
+    # --- Load model ---
+    logger.info(f"Loading model: {args.model}")
+    llm_kwargs = dict(
+        model_path=args.model,
+        n_gpu_layers=args.n_gpu_layers,
+        n_ctx=args.n_ctx,
+        logits_all=True,
+        verbose=False,
+    )
+    if tensor_split is not None:
+        llm_kwargs["tensor_split"] = tensor_split
+    llm = Llama(**llm_kwargs)
+    logger.info("Model loaded")
 
-        if hasattr(llm, 'scores'):
-            arr = np.array(llm.scores, dtype=np.float32)
-            out_logits.append(torch.from_numpy(arr))
-            meta.append({
-                'prompt': prompt,
-                'temp': t,
-                'seq_len': arr.shape[0],
-                'gpu_id': gpu_id,
-                'gen_time': time.time(),
-                'timestamp': datetime.now().isoformat()
-            })
+    # --- Signal handler for graceful shutdown ---
+    out_logits = []
+    out_meta = []
+    checkpoint_counter = resume_idx
 
-        processed += 1
+    def save_and_exit(signum, frame):
+        if out_logits:
+            checkpoint_counter_now = checkpoint_counter + len(out_logits)
+            cp = f"{args.out}_chkpt_{checkpoint_counter_now}.pt"
+            torch.save({'logits': out_logits, 'meta': out_meta}, cp)
+            logger.info(f"Signal {signum}: saved emergency checkpoint {cp}")
+        sys.exit(0)
 
-        # checkpoint + clear buffers
-        if processed % save_interval == 0:
-            cp = f"{prefix}_gpu{gpu_id}_chkpt_{processed}.pt"
-            torch.save({'logits': out_logits, 'meta': meta}, cp)
-            logger.info(f"GPU{gpu_id}: saved checkpoint {cp}")
-            out_logits.clear()
-            meta.clear()
-            gc.collect()
-            torch.cuda.empty_cache()
-
-        # periodic full cleanup
-        if processed % reset_interval == 0:
-            gc.collect()
-            torch.cuda.empty_cache()
-
-        time.sleep(sleep_time)
-
-    # final save + cleanup
-    final_f = f"{prefix}_gpu{gpu_id}.pt"
-    torch.save({'logits': out_logits, 'meta': meta}, final_f)
-    logger.info(f"GPU{gpu_id}: final results saved to {final_f}")
-    out_logits.clear()
-    meta.clear()
-    gc.collect()
-    torch.cuda.empty_cache()
-
-if __name__ == "__main__":
     signal.signal(signal.SIGINT, save_and_exit)
     signal.signal(signal.SIGTERM, save_and_exit)
 
-    p = argparse.ArgumentParser(
-        description="Multi-GPU inference, memory optimized"
-    )
-    p.add_argument("--model",       required=True, help="Path to GGUF model")
-    p.add_argument("--prompts",     required=True, help="File with prompts")
-    p.add_argument("--temps",       nargs="+", type=float,
-                        default=[0.7, 1.0, 1.3], help="Temperatures")
-    p.add_argument("--max_tokens",  type=int, default=64)
-    p.add_argument("--n_ctx",       type=int, default=512)
-    p.add_argument("--out",         default="logits")
-    p.add_argument("--log",         default=None, help="Log file")
-    p.add_argument("--gpu_split",   type=float, default=0.5,
-                        help="Fraction of prompts for GPU0")
-    p.add_argument("--save_interval",  type=int, default=5,
-                        help="Checkpoint every N generations")
-    p.add_argument("--reset_interval", type=int, default=20,
-                        help="Full GC every N generations")
-    p.add_argument("--sleep_time",     type=float, default=1.0)
-    p.add_argument("--n_gpu_layers",   type=int, default=-1)
+    # --- Generation loop ---
+    processed = 0
+    for i, (temp, prompt) in enumerate(combos):
+        if i < resume_idx:
+            continue
 
-    args = p.parse_args()
-    logger = setup_logger(args.log)
-    all_prompts = load_prompts(args.prompts)
+        llm.reset()
+        with torch.no_grad():
+            resp = llm(prompt, max_tokens=args.max_tokens, temperature=temp, logprobs=5)
 
-    split = int(len(all_prompts) * args.gpu_split)
-    p0, p1 = all_prompts[:split], all_prompts[split:]
-    logger.info(f"Total prompts: {len(all_prompts)} – GPU0: {len(p0)}, GPU1: {len(p1)}")
+        if hasattr(llm, 'scores') and llm.scores is not None:
+            try:
+                arr = np.array(llm.scores, dtype=np.float32)
+                if arr.size == 0:
+                    logger.warning(f"[{i+1}/{total}] Empty scores, skipping")
+                    continue
+                out_logits.append(torch.from_numpy(arr))
+                out_meta.append({
+                    'prompt': prompt,
+                    'temp': temp,
+                    'seq_len': arr.shape[0],
+                    'gen_time': time.time(),
+                    'timestamp': datetime.now().isoformat()
+                })
+            except Exception as e:
+                logger.warning(f"[{i+1}/{total}] Failed to extract scores: {e}")
+                continue
+        else:
+            logger.warning(f"[{i+1}/{total}] No scores available, skipping")
+            continue
 
-    threads = []
-    for gid, prom in enumerate([p0, p1]):
-        t = threading.Thread(
-            target=process_gpu,
-            args=(args.model, prom, args.temps, args.max_tokens,
-                  args.out, gid, args.save_interval,
-                  args.reset_interval, args.sleep_time,
-                  args.n_ctx, args.log, args.n_gpu_layers)
-        )
-        t.start()
-        threads.append(t)
+        processed += 1
 
-    for t in threads:
-        t.join()
+        # Checkpoint
+        if processed % args.save_interval == 0:
+            checkpoint_counter += len(out_logits)
+            cp = f"{args.out}_chkpt_{checkpoint_counter}.pt"
+            torch.save({'logits': out_logits, 'meta': out_meta}, cp)
+            logger.info(f"[{i+1}/{total}] Checkpoint saved: {cp}")
+            out_logits.clear()
+            out_meta.clear()
+            gc.collect()
+            torch.cuda.empty_cache()
+
+        # Periodic GC
+        if processed % args.reset_interval == 0:
+            gc.collect()
+            torch.cuda.empty_cache()
+
+        if processed % 50 == 0:
+            logger.info(f"Progress: {i+1}/{total} ({processed} generated)")
+
+        time.sleep(args.sleep_time)
+
+    # --- Final save ---
+    if out_logits:
+        checkpoint_counter += len(out_logits)
+        cp = f"{args.out}_chkpt_{checkpoint_counter}.pt"
+        torch.save({'logits': out_logits, 'meta': out_meta}, cp)
+        logger.info(f"Final checkpoint saved: {cp}")
+
+    logger.info(f"Done. {processed} generations saved to {args.out}_chkpt_*.pt")
+
+
+if __name__ == "__main__":
+    main()

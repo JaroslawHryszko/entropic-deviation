@@ -1,26 +1,42 @@
 #!/usr/bin/env python3
-# ed_stream.py – strumieniowe przetwarzanie checkpointów
+"""
+calculate_ed.py — Streaming checkpoint processor for Entropic Deviation.
+
+Computes ED per token as normalized KL divergence from uniform,
+aggregates to ED_mean and ED_std per generation.
+"""
 import torch, math, argparse, pandas as pd, glob, os, gc, re
 from datetime import datetime
 
+SIZE_MAP = {
+    # Current models
+    "Qwen-2.5-32B":    32_000_000_000,
+    "Llama-3.3-70B":   70_000_000_000,
+    "Gemma-2-27B":     27_000_000_000,
+    # Legacy models
+    "Llama-3-8B":       8_000_000_000,
+    "Llama-3-8B-Q4":    8_000_000_000,
+    "Mistral-7B":       7_300_000_000,
+    "Phi-3-mini-4k":    3_800_000_000,
+}
+
+
 def entropic_deviation(logits):
+    """Compute per-token ED: KL(softmax(logits) || uniform) / log(vocab_size)."""
     p = torch.softmax(logits, dim=-1)
     n = p.size(-1)
     kl = torch.sum(p * (p.log() - math.log(1.0 / n)), dim=-1)
     return kl / math.log(n)
 
+
 def parse_index(fn):
-    """Wyciąga numer checkpointu z nazwy *chkpt_{N}.pt*"""
+    """Extract checkpoint number from filename *chkpt_{N}.pt*."""
     m = re.search(r'_chkpt_(\d+)\.pt$', fn)
     return int(m.group(1)) if m else float('inf')
 
+
 def process_one_bundle(fp, out_csv, write_header, model_name):
-    size_map = {
-    "Llama-3-8B-Q4": 8_000_000_000,
-    "Mistral-7B": 7_300_000_000,
-    "Phi-3-mini-4k": 3_800_000_000
-    }
-    bundle = torch.load(fp, map_location='cpu')
+    bundle = torch.load(fp, map_location='cpu', weights_only=False)
     seqs, meta = bundle["logits"], bundle["meta"]
     records = []
     for i, logits in enumerate(seqs):
@@ -30,7 +46,7 @@ def process_one_bundle(fp, out_csv, write_header, model_name):
         rec["ED_std"]  = ed_t.std().item()
         rec["model"]   = model_name
         rec["timestamp_processed"] = datetime.now().isoformat()
-        rec["model_size"] = size_map.get(model_name, None)
+        rec["model_size"] = SIZE_MAP.get(model_name, None)
         rec["rank"] = i
         rec["chkpt_id"] = parse_index(fp)
         if "prompt" in rec and ":" in rec["prompt"]:
@@ -38,45 +54,44 @@ def process_one_bundle(fp, out_csv, write_header, model_name):
         records.append(rec)
     df = pd.DataFrame(records)
     df.to_csv(out_csv, mode='a', header=write_header, index=False)
-    # zwolnij pamięć
     del bundle, seqs, meta, records, df
     gc.collect()
 
+
 def main():
     ap = argparse.ArgumentParser(
-        description="Strumieniowe obliczanie ED na checkpointach"
+        description="Compute Entropic Deviation from logits checkpoints"
     )
     ap.add_argument(
-        "--pattern", default="logits_gpu*_chkpt_*.pt",
-        help="Glob pattern do checkpointów: e.g. 'logits_gpu*_chkpt_*.pt'"
+        "--pattern", default="logits_*_chkpt_*.pt",
+        help="Glob pattern for checkpoint files"
     )
     ap.add_argument(
         "--out", default="ed_results.csv",
-        help="Ścieżka do wyniku CSV"
+        help="Output CSV path"
     )
     ap.add_argument(
         "--model-name", default="Mistral-7B",
-        help="Etykieta pola 'model' w CSV"
+        help="Model label for the 'model' column in CSV"
     )
     args = ap.parse_args()
 
-    # usuń stary plik wynikowy, jeśli jest
     if os.path.exists(args.out):
         os.remove(args.out)
 
-    # znajdź i posortuj pliki checkpoint
     files = sorted(glob.glob(args.pattern), key=parse_index)
     if not files:
-        print(f"Brak plików pasujących do wzorca {args.pattern}")
+        print(f"No files matching pattern: {args.pattern}")
         return
 
     write_header = True
     for fp in files:
-        print(f"⏳ Przetwarzam {fp} …")
+        print(f"Processing {fp} ...")
         process_one_bundle(fp, args.out, write_header, args.model_name)
         write_header = False
 
-    print(f"✅ Zapisano wyniki do {args.out}")
+    print(f"Results saved to {args.out}")
+
 
 if __name__ == "__main__":
     main()

@@ -61,7 +61,7 @@ python "$SCRIPT_DIR/generate_logits.py" \
 # Step 2: Calculate ED
 echo "[2/3] Computing Entropic Deviation..."
 python "$SCRIPT_DIR/calculate_ed.py" \
-    --pattern "${LOGITS_PREFIX}_gpu*_chkpt_*.pt" \
+    --pattern "${LOGITS_PREFIX}_chkpt_*.pt" \
     --out "$ED_CSV" \
     --model-name "$MODEL_NAME"
 
