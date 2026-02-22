@@ -175,3 +175,7 @@ cython_debug/
 
 # sztuczny czlowiek stuff
 models/
+
+# Claude Code
+CLAUDE.md
+.claude/
