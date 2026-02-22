@@ -1,6 +1,7 @@
 # Entropic Deviation
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18732011.svg)](https://zenodo.org/records/18732011)
 
 A research framework for studying randomness and non-randomness in Large Language Models through entropic deviation (ED) analysis.
 
@@ -149,7 +150,8 @@ If you use this code in your research, please cite:
   title={Entropic Deviation as a Measure of Non-Randomness in Large Language Models},
   author={Jarosław Hryszko},
   journal={Zenodo},
-  doi={https://doi.org/10.5281/zenodo.15494181},
+  doi={10.5281/zenodo.18732011},
+  url={https://zenodo.org/records/18732011},
   year={2025}
 }
 ```
