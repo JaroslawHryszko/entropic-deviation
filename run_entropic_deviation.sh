@@ -2,87 +2,76 @@
 
 # =========================================================
 # run_entropic_deviation.sh
-# Script to run the memory-optimized Entropic Deviation experiment
+# Full pipeline: generate logits → calculate ED → run statistical tests
 # =========================================================
 
-# Directory setup
+set -euo pipefail
+
 SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
-MODEL_PATH="ed_experiment/models/mistral-7b-instruct-v0.1.Q4_K_M.gguf"
-PROMPTS_PATH="ed_experiment/prompts/prompts.jsonl"
-RESULTS_DIR="ed_experiment/results"
-LOG_DIR="ed_experiment/logs"
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 
-# Create necessary directories
-mkdir -p "$RESULTS_DIR"
-mkdir -p "$LOG_DIR"
+# --- Configuration (edit as needed) -----------------------
+MODEL_PATH="models/mistral-7b-instruct-v0.1.Q4_K_M.gguf"
+PROMPTS_PATH="prompts/prompts.jsonl"
+MODEL_NAME="Mistral-7B"
+TEMPS="0.7 1.0 1.3"
+MAX_TOKENS=128
+N_CTX=512
+N_GPU_LAYERS=-1
+SAVE_INTERVAL=5
+RESULTS_DIR="results"
+LOG_DIR="logs"
+# ----------------------------------------------------------
 
-# Check if the Python script exists
-if [ ! -f "$SCRIPT_DIR/ed_experiment/generate_multi_gpu_lowmem.py" ]; then
-    echo "Error: generate_multi_gpu_lowmem.py not found!"
-    echo "Please save the memory-optimized script first."
-    exit 1
-fi
+mkdir -p "$RESULTS_DIR" "$LOG_DIR"
 
-# Check if the model exists
-if [ ! -f "$MODEL_PATH" ]; then
-    echo "Error: Model file not found at $MODEL_PATH"
-    echo "Please download the model first or update the path in this script."
-    exit 1
-fi
+# Validate inputs
+for f in "$SCRIPT_DIR/$MODEL_PATH" "$SCRIPT_DIR/$PROMPTS_PATH"; do
+    if [ ! -f "$f" ]; then
+        echo "Error: $f not found."
+        exit 1
+    fi
+done
 
-# Check if the prompts file exists
-if [ ! -f "$PROMPTS_PATH" ]; then
-    echo "Error: Prompts file not found at $PROMPTS_PATH"
-    exit 1
-fi
+LOGITS_PREFIX="$RESULTS_DIR/logits_${TIMESTAMP}"
+ED_CSV="$RESULTS_DIR/ed_results_${TIMESTAMP}.csv"
+FT_CSV="$RESULTS_DIR/FTresults_${TIMESTAMP}.csv"
 
 echo "====================================================="
-echo "Starting Entropic Deviation Experiment (Low Memory Mode)"
-echo "Model: $MODEL_PATH"
+echo "Entropic Deviation Pipeline"
+echo "Model:   $MODEL_PATH"
 echo "Prompts: $PROMPTS_PATH"
-echo "Timestamp: $TIMESTAMP"
-echo "Results dir: $RESULTS_DIR"
-echo "Log: $LOG_DIR/experiment_$TIMESTAMP.log"
+echo "Temps:   $TEMPS"
+echo "Results: $RESULTS_DIR"
 echo "====================================================="
 
-# Run the memory-optimized experiment
-python "$SCRIPT_DIR/ed_experiment/generate_multi_gpu_lowmem.py" \
+# Step 1: Generate logits
+echo "[1/3] Generating logits..."
+python "$SCRIPT_DIR/generate_logits.py" \
     --model "$MODEL_PATH" \
     --prompts "$PROMPTS_PATH" \
-    --max_tokens 64 \
-    --n_ctx 512 \
-#    --n_batch 32 \
-#    --micro_batch 2 \
-    --sleep_time 2.0 \
-    --n_gpu_layers 32 \
-    --save_interval 5 \
-    --out "$RESULTS_DIR" \
-    --log "$LOG_DIR/ed_generate_$TIMESTAMP.log"
+    --temps $TEMPS \
+    --max_tokens "$MAX_TOKENS" \
+    --n_ctx "$N_CTX" \
+    --n_gpu_layers "$N_GPU_LAYERS" \
+    --save_interval "$SAVE_INTERVAL" \
+    --out "$LOGITS_PREFIX" \
+    --log "$LOG_DIR/generate_${TIMESTAMP}.log"
 
-# Check if the experiment completed successfully
-if [ $? -eq 0 ]; then
-    echo "Experiment completed successfully!"
-    echo "Results saved to: $RESULTS_DIR/logits_$TIMESTAMP"
-    echo "Log saved to: $LOG_DIR/experiment_$TIMESTAMP.log"
-    
-    # Run the ED calculation on the results
-#    echo "Computing Entropic Deviation metrics..."
-#    python "$SCRIPT_DIR/ed_experiment/ed.py" \
-#        --logits "$RESULTS_DIR/logits_${TIMESTAMP}_combined.pt" \
-#        --out "$RESULTS_DIR/ed_results_$TIMESTAMP.csv"
-    
-#    # Run the statistical tests
-#    echo "Running statistical tests..."
-#    python "$SCRIPT_DIR/ed_experiment/stats.py" "$RESULTS_DIR/ed_results_$TIMESTAMP.csv" \
-#        --out "$RESULTS_DIR/results_Ftests_$TIMESTAMP.csv"
-    
-    echo "====================================================="
-    echo "Entropic Deviation Experiment Pipeline Complete!"
-    echo "Check the results in the $RESULTS_DIR directory."
-    echo "====================================================="
-else
-    echo "ERROR: Experiment failed or was interrupted."
-    echo "Check the log file for details: $LOG_DIR/experiment_$TIMESTAMP.log"
-    echo "You may want to resume the experiment with --start_idx parameter."
-fi
+# Step 2: Calculate ED
+echo "[2/3] Computing Entropic Deviation..."
+python "$SCRIPT_DIR/calculate_ed.py" \
+    --pattern "${LOGITS_PREFIX}_gpu*_chkpt_*.pt" \
+    --out "$ED_CSV" \
+    --model-name "$MODEL_NAME"
+
+# Step 3: Statistical tests
+echo "[3/3] Running statistical tests (F1-F8)..."
+python "$SCRIPT_DIR/calculate_metrics.py" "$ED_CSV" \
+    --out "$FT_CSV"
+
+echo "====================================================="
+echo "Pipeline complete!"
+echo "  ED results: $ED_CSV"
+echo "  FT results: $FT_CSV"
+echo "====================================================="
