@@ -10,7 +10,7 @@ import torch
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from calculate_ed import entropic_deviation, parse_index, process_one_bundle, SIZE_MAP
+from calculate_ed import entropic_deviation, parse_index, process_one_bundle, _parse_model_size
 
 
 class TestEntropicDeviation:
@@ -123,8 +123,8 @@ class TestProcessOneBundle:
 
     def test_append_mode(self, sample_checkpoint, tmp_dir):
         out_csv = str(tmp_dir / "test_ed.csv")
-        process_one_bundle(str(sample_checkpoint), out_csv, True, "Model1")
-        process_one_bundle(str(sample_checkpoint), out_csv, False, "Model2")
+        process_one_bundle(str(sample_checkpoint), out_csv, True, "Model-7B")
+        process_one_bundle(str(sample_checkpoint), out_csv, False, "Model-13B")
         df = pd.read_csv(out_csv)
         assert len(df) == 2
 
@@ -136,19 +136,23 @@ class TestProcessOneBundle:
         assert df.iloc[0]["ED_std"] >= 0
 
 
-class TestSizeMap:
-    """Tests for the model size mapping."""
+class TestParseModelSize:
+    """Tests for dynamic model size parsing from name."""
 
-    def test_current_models_present(self):
-        assert "Qwen-2.5-32B" in SIZE_MAP
-        assert "Llama-3.3-70B" in SIZE_MAP
-        assert "Gemma-2-27B" in SIZE_MAP
+    def test_standard_billions(self):
+        assert _parse_model_size("Llama-3.3-70B") == 70_000_000_000
 
-    def test_legacy_models_present(self):
-        assert "Llama-3-8B" in SIZE_MAP
-        assert "Mistral-7B" in SIZE_MAP
-        assert "Phi-3-mini-4k" in SIZE_MAP
+    def test_decimal_billions(self):
+        assert _parse_model_size("Qwen-2.5-32B") == 32_000_000_000
 
-    def test_sizes_are_positive(self):
-        for name, size in SIZE_MAP.items():
-            assert size > 0, f"{name} has invalid size {size}"
+    def test_small_model(self):
+        assert _parse_model_size("Phi-3-mini-3.8B") == 3_800_000_000
+
+    def test_lowercase_b(self):
+        assert _parse_model_size("gemma-2-27b-it") == 27_000_000_000
+
+    def test_no_size_returns_none(self):
+        assert _parse_model_size("UnknownModel") is None
+
+    def test_no_size_no_number(self):
+        assert _parse_model_size("TestModel") is None

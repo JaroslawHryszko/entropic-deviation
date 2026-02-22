@@ -8,17 +8,13 @@ aggregates to ED_mean and ED_std per generation.
 import torch, math, argparse, pandas as pd, glob, os, gc, re
 from datetime import datetime
 
-SIZE_MAP = {
-    # Current models
-    "Qwen-2.5-32B":    32_000_000_000,
-    "Llama-3.3-70B":   70_000_000_000,
-    "Gemma-2-27B":     27_000_000_000,
-    # Legacy models
-    "Llama-3-8B":       8_000_000_000,
-    "Llama-3-8B-Q4":    8_000_000_000,
-    "Mistral-7B":       7_300_000_000,
-    "Phi-3-mini-4k":    3_800_000_000,
-}
+def _parse_model_size(model_name):
+    """Extract parameter count from model name (e.g. 'Llama-3.3-70B' → 70e9).
+    Returns None if no size pattern is found."""
+    m = re.search(r'(\d+(?:\.\d+)?)\s*[Bb]', model_name)
+    if m:
+        return int(float(m.group(1)) * 1_000_000_000)
+    return None
 
 
 def entropic_deviation(logits):
@@ -48,7 +44,7 @@ def process_one_bundle(fp, out_csv, write_header, model_name):
         rec["ED_std"]  = ed_t.std().item()
         rec["model"]   = model_name
         rec["timestamp_processed"] = datetime.now().isoformat()
-        rec["model_size"] = SIZE_MAP.get(model_name, None)
+        rec["model_size"] = _parse_model_size(model_name)
         rec["rank"] = i
         rec["chkpt_id"] = parse_index(fp)
         if "prompt" in rec and ":" in rec["prompt"]:
@@ -73,7 +69,7 @@ def main():
         help="Output CSV path"
     )
     ap.add_argument(
-        "--model-name", default="Mistral-7B",
+        "--model-name", required=True,
         help="Model label for the 'model' column in CSV"
     )
     args = ap.parse_args()
