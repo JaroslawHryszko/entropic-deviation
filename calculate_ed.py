@@ -25,7 +25,9 @@ def entropic_deviation(logits):
     """Compute per-token ED: KL(softmax(logits) || uniform) / log(vocab_size)."""
     p = torch.softmax(logits, dim=-1)
     n = p.size(-1)
-    kl = torch.sum(p * (p.log() - math.log(1.0 / n)), dim=-1)
+    # Clamp to avoid log(0) = -inf which causes NaN in p * log(p)
+    log_p = torch.log(p.clamp(min=1e-45))
+    kl = torch.sum(p * (log_p - math.log(1.0 / n)), dim=-1)
     return kl / math.log(n)
 
 
