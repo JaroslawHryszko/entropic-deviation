@@ -2,11 +2,44 @@
 
 # =========================================================
 # run_entropic_deviation.sh
-# Full pipeline: for each model × prompt set, generate logits,
-# compute ED, run statistical tests, then produce combined analysis.
+# Full pipeline: for each model × prompt set, generate logits
+# with inline ED computation, then run statistical tests.
+#
+# Supports graceful stop: send SIGINT (Ctrl+C) or SIGTERM to
+# cleanly finish the current step and exit. The signal is forwarded
+# to the running Python subprocess so it can save its own state.
+# Re-run the script with --resume to continue from where it stopped.
 # =========================================================
 
-set -euo pipefail
+set -uo pipefail
+
+# --- Graceful shutdown machinery --------------------------
+CHILD_PID=""
+STOP_REQUESTED=0
+
+on_signal() {
+    STOP_REQUESTED=1
+    echo ""
+    echo "[STOP] Graceful shutdown requested — finishing current step..."
+    if [ -n "$CHILD_PID" ] && kill -0 "$CHILD_PID" 2>/dev/null; then
+        kill -TERM "$CHILD_PID"
+        wait "$CHILD_PID" 2>/dev/null
+    fi
+}
+
+trap on_signal SIGINT SIGTERM
+
+# Run a command in foreground, capture its PID for signal forwarding.
+# Returns the command's exit code. If stop was requested, caller checks STOP_REQUESTED.
+run_step() {
+    "$@" &
+    CHILD_PID=$!
+    wait "$CHILD_PID"
+    local rc=$?
+    CHILD_PID=""
+    return $rc
+}
+# ----------------------------------------------------------
 
 # GPU lockfile — prevents cron jobs from competing for GPU
 LOCKFILE="/tmp/ed_experiment.lock"
@@ -21,15 +54,23 @@ TEMPS="0.7 1.0 1.3"
 MAX_TOKENS=128
 N_CTX=512
 N_GPU_LAYERS=-1
-SAVE_INTERVAL=5
+SAVE_INTERVAL=20
 MODELS_DIR="models"
 RESULTS_DIR="results"
 LOG_DIR="logs"
+RESUME_FLAG=""
 
 PROMPT_SETS=(
     "prompts/prompts.jsonl"
     "prompts/prompts_neutral.jsonl"
 )
+
+# Parse arguments
+for arg in "$@"; do
+    case "$arg" in
+        --resume) RESUME_FLAG="--resume" ;;
+    esac
+done
 # ----------------------------------------------------------
 
 mkdir -p "$RESULTS_DIR" "$LOG_DIR"
@@ -51,6 +92,7 @@ echo "Prompt sets:  ${#PROMPT_SETS[@]}"
 for p in "${PROMPT_SETS[@]}"; do echo "  - $p"; done
 echo "Temps:        $TEMPS"
 echo "Max tokens:   $MAX_TOKENS"
+if [ -n "$RESUME_FLAG" ]; then echo "Mode:         RESUME"; fi
 echo "====================================================="
 
 ED_CSVS=()
@@ -64,7 +106,6 @@ for MODEL_PATH in "${MODELS[@]}"; do
         PROMPT_TAG=$(basename "$PROMPTS_PATH" .jsonl)
 
         RUN_ID="${MODEL_NAME}_${PROMPT_TAG}_${TIMESTAMP}"
-        LOGITS_PREFIX="$RESULTS_DIR/logits_${RUN_ID}"
         ED_CSV="$RESULTS_DIR/ed_${RUN_ID}.csv"
         FT_CSV="$RESULTS_DIR/FT_${RUN_ID}.csv"
 
@@ -81,9 +122,9 @@ for MODEL_PATH in "${MODELS[@]}"; do
             continue
         fi
 
-        # Step 1: Generate logits
-        echo "[1/3] Generating logits..."
-        python "$SCRIPT_DIR/generate_logits.py" \
+        # Step 1: Generate logits + compute ED
+        echo "[1/2] Generating logits + computing ED..."
+        run_step python "$SCRIPT_DIR/generate_logits.py" \
             --model "$MODEL_PATH" \
             --prompts "$PROMPTS_PATH" \
             --temps $TEMPS \
@@ -91,20 +132,25 @@ for MODEL_PATH in "${MODELS[@]}"; do
             --n_ctx "$N_CTX" \
             --n_gpu_layers "$N_GPU_LAYERS" \
             --save_interval "$SAVE_INTERVAL" \
-            --out "$LOGITS_PREFIX" \
-            --log "$LOG_DIR/${RUN_ID}.log"
+            --ed-out "$ED_CSV" \
+            --model-name "$MODEL_NAME" \
+            --log "$LOG_DIR/${RUN_ID}.log" \
+            $RESUME_FLAG
 
-        # Step 2: Calculate ED
-        echo "[2/3] Computing Entropic Deviation..."
-        python "$SCRIPT_DIR/calculate_ed.py" \
-            --pattern "${LOGITS_PREFIX}_chkpt_*.pt" \
-            --out "$ED_CSV" \
-            --model-name "$MODEL_NAME"
+        if [ "$STOP_REQUESTED" -eq 1 ]; then
+            echo "[STOP] Stopped after logits generation. Re-run with --resume to continue."
+            exit 0
+        fi
 
-        # Step 3: Statistical tests
-        echo "[3/3] Running statistical tests (F1-F8)..."
-        python "$SCRIPT_DIR/calculate_metrics.py" "$ED_CSV" \
+        # Step 2: Statistical tests
+        echo "[2/2] Running statistical tests (F1-F8)..."
+        run_step python "$SCRIPT_DIR/calculate_metrics.py" "$ED_CSV" \
             --out "$FT_CSV"
+
+        if [ "$STOP_REQUESTED" -eq 1 ]; then
+            echo "[STOP] Stopped after statistical tests. Re-run with --resume to continue."
+            exit 0
+        fi
 
         ED_CSVS+=("$ED_CSV")
 
@@ -127,8 +173,13 @@ if [ ${#ED_CSVS[@]} -gt 1 ]; then
         tail -n +2 "$csv" >> "$COMBINED_CSV"
     done
 
-    python "$SCRIPT_DIR/calculate_metrics.py" "$COMBINED_CSV" \
+    run_step python "$SCRIPT_DIR/calculate_metrics.py" "$COMBINED_CSV" \
         --out "$COMBINED_FT"
+
+    if [ "$STOP_REQUESTED" -eq 1 ]; then
+        echo "[STOP] Stopped during combined analysis."
+        exit 0
+    fi
 
     echo "Combined ED:  $COMBINED_CSV"
     echo "Combined FT:  $COMBINED_FT"

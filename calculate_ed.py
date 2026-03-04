@@ -19,6 +19,8 @@ def _parse_model_size(model_name):
 
 def entropic_deviation(logits):
     """Compute per-token ED: KL(softmax(logits) || uniform) / log(vocab_size)."""
+    # Upcast float16 → float32 for numerical precision in softmax
+    logits = logits.float()
     p = torch.softmax(logits, dim=-1)
     n = p.size(-1)
     # Clamp to avoid log(0) = -inf which causes NaN in p * log(p)
@@ -38,7 +40,8 @@ def process_one_bundle(fp, out_csv, write_header, model_name):
     seqs, meta = bundle["logits"], bundle["meta"]
     records = []
     for i, logits in enumerate(seqs):
-        ed_t = entropic_deviation(logits)
+        with torch.no_grad():
+            ed_t = entropic_deviation(logits)
         rec = meta[i].copy()
         rec["ED_mean"] = ed_t.mean().item()
         rec["ED_std"]  = ed_t.std().item()

@@ -4,7 +4,13 @@ numpy
 pandas
 scipy
 statsmodels           # AR(1) & OLS
+psutil
+
+# Prompt generation (optional, only needed to rebuild prompts/)
 datasets==2.*
 nltk
 tqdm
-psutil
+
+# Testing
+pytest
+pytest-pikachu

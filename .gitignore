@@ -136,8 +136,12 @@ ENV/
 env.bak/
 venv.bak/
 
-# sztuczny czlowiek stuff
+# Models (GGUF) and logit checkpoints
 models/
+*.pt
+
+# Logs
+logs/
 
 # Claude Code
 CLAUDE.md

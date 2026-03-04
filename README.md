@@ -18,7 +18,7 @@ where `p = softmax(logits)` and `|V|` is the vocabulary size. ED = 0 means unifo
 ## Pipeline Overview
 
 ```
-prompts.jsonl → generate_logits.py → .pt checkpoints → calculate_ed.py → ed_results.csv → calculate_metrics.py → FTresults.csv
+prompts.jsonl → generate_logits.py → ed_results.csv → calculate_metrics.py → FTresults.csv
 ```
 
 ## Step-by-Step Guide
@@ -29,7 +29,7 @@ prompts.jsonl → generate_logits.py → .pt checkpoints → calculate_ed.py →
 git clone https://github.com/JaroslawHryszko/entropic-deviation.git
 cd entropic-deviation
 
-python -m venv edenv && source edenv/bin/activate
+conda create -n text python=3.12 && conda activate text
 pip install -r requirements.txt
 pip install llama-cpp-python  # requires CUDA toolkit
 ```
@@ -54,9 +54,9 @@ huggingface-cli download bartowski/Llama-3.3-70B-Instruct-GGUF \
     --include "Llama-3.3-70B-Instruct-Q4_K_M.gguf" --local-dir models/
 ```
 
-### 3. Generate logits
+### 3. Generate logits and compute ED
 
-The inference engine auto-detects GPUs and spreads the model across all available devices.
+The inference engine auto-detects GPUs, spreads the model across all available devices, and computes ED inline — no intermediate checkpoint files needed.
 
 ```bash
 python generate_logits.py \
@@ -64,41 +64,36 @@ python generate_logits.py \
     --prompts prompts/prompts.jsonl \
     --temps 0.7 1.0 1.3 \
     --max_tokens 128 \
-    --out results/logits_qwen32b \
-    --save_interval 5 \
+    --ed-out results/ed_results_qwen32b.csv \
+    --model-name "Qwen-2.5-32B" \
+    --save_interval 20 \
     --log logs/qwen32b.log
 ```
 
 Key options:
 - `--temps` — temperature values to test (default: 0.7 1.0 1.3)
 - `--max_tokens` — tokens to generate per prompt (default: 128)
-- `--save_interval` — checkpoint every N generations (default: 5)
-- `--resume` — resume from the last checkpoint
+- `--ed-out` — output CSV for ED results (default: `{out}_ed.csv`)
+- `--model-name` — model label for CSV (auto-derived from filename if not given)
+- `--save_interval` — flush CSV every N generations (default: 20)
+- `--save-logits` — also save `.pt` checkpoint files with full logit tensors
+- `--resume` — resume from the last saved position in ED CSV
 - `--n_gpu_layers` — layers to offload to GPU (-1 = all, default)
 
-The script handles SIGINT/SIGTERM gracefully, saving an emergency checkpoint before exit.
+The script handles SIGINT/SIGTERM gracefully, flushing buffered ED records to CSV before exit.
 
-### 4. Compute Entropic Deviation
+Output CSV columns: `prompt, temp, seq_len, gen_time, timestamp, ED_mean, ED_std, model, model_size, domain`.
 
-```bash
-python calculate_ed.py \
-    --pattern "results/logits_qwen32b_chkpt_*.pt" \
-    --out results/ed_results_qwen32b.csv \
-    --model-name "Qwen-2.5-32B"
-```
-
-Output CSV columns: `prompt, temp, seq_len, gen_time, ED_mean, ED_std, model, model_size, domain, rank, chkpt_id`.
-
-### 5. Run statistical tests (F1-F8)
+### 4. Run statistical tests (F1-F8)
 
 ```bash
 python calculate_metrics.py results/ed_results_qwen32b.csv \
     --out results/FTresults_qwen32b.csv
 ```
 
-### 6. Repeat for each model
+### 5. Repeat for each model
 
-Run steps 3-5 for each model in your experiment. To analyze all models together, concatenate ED results:
+Run steps 3-4 for each model in your experiment. To analyze all models together, concatenate ED results:
 
 ```bash
 # Merge ED CSVs (skip headers from subsequent files)
@@ -112,13 +107,13 @@ python calculate_metrics.py results/ed_results_combined.csv \
 
 ### Alternative: run the full pipeline
 
-For a single model, the shell wrapper runs all three steps:
+The shell wrapper runs all steps for every model found in `models/`:
 
 ```bash
 ./run_entropic_deviation.sh
 ```
 
-Edit the configuration variables at the top of the script to set model path, prompts, and output directories.
+Edit the configuration variables at the top of the script to customize prompts, temperatures, and output directories.
 
 ## Prompt Sets
 
@@ -155,18 +150,29 @@ python prompts/build_neutral_prompts.py   # neutral prompts (no external depende
 
 ## Utility Scripts
 
+- **`calculate_ed.py`** — standalone checkpoint-to-CSV processor (for reprocessing `.pt` files saved with `--save-logits`):
+  ```bash
+  python calculate_ed.py --pattern "results/logits_*_chkpt_*.pt" --out ed.csv --model-name "ModelName"
+  ```
 - **`merge_checkpoints.py`** — merge multiple `.pt` checkpoint files into one:
   ```bash
   python merge_checkpoints.py --pattern "results/logits_*_chkpt_*.pt" --output merged.pt
   ```
 
+## Testing
+
+```bash
+conda activate text
+python -m pytest tests/
+```
+
 ## Project Structure
 
 ```
 entropic-deviation/
-├── generate_logits.py          # Step 1: multi-GPU logits generation
-├── calculate_ed.py             # Step 2: compute ED from checkpoints
-├── calculate_metrics.py        # Step 3: statistical tests F1-F8
+├── generate_logits.py          # Step 1: multi-GPU inference + inline ED
+├── calculate_ed.py             # Standalone: compute ED from .pt checkpoints
+├── calculate_metrics.py        # Step 2: statistical tests F1-F8
 ├── merge_checkpoints.py        # Utility: merge checkpoint files
 ├── run_entropic_deviation.sh   # Full pipeline wrapper
 ├── requirements.txt
@@ -175,13 +181,14 @@ entropic-deviation/
 │   ├── prompts_neutral.jsonl   # 1000 neutral prompts
 │   ├── build_prompts_en.py     # Domain prompt generator
 │   └── build_neutral_prompts.py # Neutral prompt generator
+├── tests/                      # Test suite (pytest)
 ├── results/                    # Experiment output (CSV)
 └── models/                     # GGUF models (gitignored)
 ```
 
 ## Requirements
 
-- Python 3.10+
+- Python 3.10+ (conda recommended)
 - PyTorch 2.x (with CUDA support)
 - NVIDIA GPU (Pascal architecture or newer)
 - `llama-cpp-python` (not in `requirements.txt` — install separately with CUDA support)
