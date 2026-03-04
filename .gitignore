@@ -140,8 +140,9 @@ venv.bak/
 models/
 *.pt
 
-# Logs
+# Logs and progress
 logs/
+results/.progress
 
 # Claude Code
 CLAUDE.md

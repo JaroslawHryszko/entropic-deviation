@@ -139,6 +139,39 @@ def flush_records(records, ed_csv, write_header):
     df.to_csv(ed_csv, mode='a', header=write_header, index=False)
 
 
+def write_progress(path, model_name, processed, total, t_start_wall, ed_mean_last=None):
+    """Write a human-readable progress file, atomically."""
+    if not path:
+        return
+    pct = processed / total * 100 if total else 0
+    elapsed = time.time() - t_start_wall
+    if processed > 0:
+        eta_s = elapsed / processed * (total - processed)
+        eta_h, eta_rem = divmod(int(eta_s), 3600)
+        eta_m, eta_sec = divmod(eta_rem, 60)
+        eta_str = f"{eta_h}h {eta_m:02d}m {eta_sec:02d}s"
+    else:
+        eta_str = "—"
+    elapsed_h, elapsed_rem = divmod(int(elapsed), 3600)
+    elapsed_m, elapsed_sec = divmod(elapsed_rem, 60)
+    elapsed_str = f"{elapsed_h}h {elapsed_m:02d}m {elapsed_sec:02d}s"
+
+    lines = [
+        f"model:    {model_name}",
+        f"progress: {processed}/{total}  ({pct:.1f}%)",
+        f"elapsed:  {elapsed_str}",
+        f"ETA:      {eta_str}",
+        f"updated:  {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+    ]
+    if ed_mean_last is not None:
+        lines.insert(2, f"last ED:  {ed_mean_last:.4f}")
+
+    tmp = path + ".tmp"
+    with open(tmp, 'w') as f:
+        f.write("\n".join(lines) + "\n")
+    os.replace(tmp, path)
+
+
 # --- Main processing --------------------------------------------------
 
 def main():
@@ -163,6 +196,8 @@ def main():
                    help="Number of layers to offload to GPU (-1 = all)")
     p.add_argument("--resume", action="store_true",
                    help="Resume from last saved position in ED CSV")
+    p.add_argument("--progress-file", default=None,
+                   help="Path to progress status file (updated every save_interval)")
     args = p.parse_args()
 
     logger = setup_logger(args.log)
@@ -217,10 +252,13 @@ def main():
     # --- CSV header ---
     write_header = (resume_idx == 0) or not os.path.exists(args.ed_out)
 
-    # --- Buffers ---
+    # --- Buffers and state ---
     ed_records = []
     out_logits = []
     out_meta = []
+    t_wall_start = time.time()
+    processed = 0
+    ed_mean_last = None
 
     # --- Signal handler for graceful shutdown ---
     def save_and_exit(signum, frame):
@@ -231,13 +269,13 @@ def main():
             cp = f"{args.out}_chkpt_{resume_idx + processed}.pt"
             torch.save({'logits': out_logits, 'meta': out_meta}, cp)
             logger.info(f"Signal {signum}: saved emergency checkpoint {cp}")
+        write_progress(args.progress_file, args.model_name, resume_idx + processed, total, t_wall_start, ed_mean_last)
         sys.exit(0)
 
     signal.signal(signal.SIGINT, save_and_exit)
     signal.signal(signal.SIGTERM, save_and_exit)
 
     # --- Generation loop ---
-    processed = 0
     for i, (temp, prompt) in enumerate(combos):
         if i < resume_idx:
             continue
@@ -272,6 +310,7 @@ def main():
                     ed_t = entropic_deviation(logit_tensor_f32)
                 ed_mean = ed_t.mean().item()
                 ed_std = ed_t.std().item()
+                ed_mean_last = ed_mean
 
                 t_extract = time.perf_counter()
 
@@ -335,6 +374,8 @@ def main():
 
             gc.collect()
             torch.cuda.empty_cache()
+            write_progress(args.progress_file, args.model_name,
+                           resume_idx + processed, total, t_wall_start, ed_mean_last)
 
         if processed % 10 == 0:
             logger.info(
@@ -357,6 +398,8 @@ def main():
         torch.save({'logits': out_logits, 'meta': out_meta}, cp)
         logger.info(f"Final checkpoint saved: {cp}")
 
+    write_progress(args.progress_file, args.model_name,
+                   resume_idx + processed, total, t_wall_start, ed_mean_last)
     logger.info(f"Done. {processed} generations → {args.ed_out}")
 
 

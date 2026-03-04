@@ -58,6 +58,7 @@ SAVE_INTERVAL=20
 MODELS_DIR="models"
 RESULTS_DIR="results"
 LOG_DIR="logs"
+PROGRESS_FILE="results/.progress"
 RESUME_FLAG=""
 
 PROMPT_SETS=(
@@ -135,6 +136,7 @@ for MODEL_PATH in "${MODELS[@]}"; do
             --ed-out "$ED_CSV" \
             --model-name "$MODEL_NAME" \
             --log "$LOG_DIR/${RUN_ID}.log" \
+            --progress-file "$PROGRESS_FILE" \
             $RESUME_FLAG
 
         if [ "$STOP_REQUESTED" -eq 1 ]; then
