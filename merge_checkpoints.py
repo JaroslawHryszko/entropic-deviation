@@ -1,8 +1,29 @@
 #!/usr/bin/env python3
+"""
+merge_checkpoints.py — Merge multiple .pt checkpoint files into one bundle.
+"""
 import argparse
 import glob
+import logging
 import os
 import torch
+
+
+def setup_logger(log_file=None):
+    logger = logging.getLogger("ed_merge")
+    logger.handlers.clear()
+    logger.setLevel(logging.INFO)
+    fmt = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    ch = logging.StreamHandler()
+    ch.setFormatter(fmt)
+    logger.addHandler(ch)
+    if log_file:
+        os.makedirs(os.path.dirname(log_file) or ".", exist_ok=True)
+        fh = logging.FileHandler(log_file)
+        fh.setFormatter(fmt)
+        logger.addHandler(fh)
+    return logger
+
 
 def parse_index(fn):
     # expects filenames like: prefix_chkpt_{n}.pt
@@ -13,12 +34,13 @@ def parse_index(fn):
     num_part = parts[1].split('.pt')[0]
     try:
         return int(num_part)
-    except:
+    except Exception:
         return float('inf')
+
 
 def main():
     p = argparse.ArgumentParser(
-        description="Scal checkpointy .pt w jeden bundle logits+meta"
+        description="Merge .pt checkpoint files into a single logits+meta bundle"
     )
     p.add_argument(
         "--pattern", required=True,
@@ -26,29 +48,38 @@ def main():
     )
     p.add_argument(
         "--output", default="logits_merged.pt",
-        help="Docelowy plik .pt z połączonymi logits i meta"
+        help="Output .pt file with merged logits and meta"
     )
+    p.add_argument("--log", default=None, help="Log file path")
     args = p.parse_args()
+
+    logger = setup_logger(args.log)
 
     files = sorted(glob.glob(args.pattern), key=parse_index)
     if not files:
-        print(f"Brak plików pasujących do wzorca {args.pattern}")
+        logger.warning(f"No files matching pattern: {args.pattern}")
         return
+
+    logger.info(f"Found {len(files)} checkpoint(s) matching {args.pattern}")
 
     all_logits = []
     all_meta   = []
 
     for f in files:
-        data = torch.load(f, map_location="cpu", weights_only=False)
-        logits = data.get("logits", [])
-        meta   = data.get("meta", [])
-        all_logits.extend(logits)
-        all_meta.extend(meta)
-        print(f"  + załadowano {len(logits)} wpisów z {f}")
+        try:
+            data = torch.load(f, map_location="cpu", weights_only=False)
+            logits = data.get("logits", [])
+            meta   = data.get("meta", [])
+            all_logits.extend(logits)
+            all_meta.extend(meta)
+            logger.info(f"  Loaded {len(logits)} entries from {f}")
+        except Exception as e:
+            logger.error(f"  Failed to load {f}: {e}")
+            continue
 
     torch.save({"logits": all_logits, "meta": all_meta}, args.output)
-    print(f"Scalono {len(files)} plików → {args.output}")
-    print(f"Łącznie wpisów: {len(all_logits)}")
+    logger.info(f"Merged {len(files)} files -> {args.output} ({len(all_logits)} entries)")
+
 
 if __name__ == "__main__":
     main()

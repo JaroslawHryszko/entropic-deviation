@@ -145,7 +145,8 @@ for MODEL_PATH in "${MODELS[@]}"; do
         # Step 2: Statistical tests
         echo "[2/2] Running statistical tests (F1-F8)..."
         run_step python "$SCRIPT_DIR/calculate_metrics.py" "$ED_CSV" \
-            --out "$FT_CSV"
+            --out "$FT_CSV" \
+            --log "$LOG_DIR/${RUN_ID}.log"
 
         if [ "$STOP_REQUESTED" -eq 1 ]; then
             echo "[STOP] Stopped after statistical tests. Re-run with --resume to continue."
