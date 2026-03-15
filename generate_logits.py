@@ -315,6 +315,7 @@ def main():
                 t_extract = time.perf_counter()
 
                 # Build ED record
+                global_rank = resume_idx + processed
                 ed_records.append({
                     'prompt': prompt,
                     'temp': temp,
@@ -326,6 +327,8 @@ def main():
                     'model': args.model_name,
                     'model_size': model_size,
                     'domain': parse_domain(prompt),
+                    'rank': global_rank,
+                    'chkpt_id': global_rank // args.save_interval,
                 })
 
                 # Optionally save logit tensors
