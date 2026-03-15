@@ -129,16 +129,16 @@ def write_progress(path, model_name, processed, total, t_start_wall, ed_mean_las
 # --- Model loading --------------------------------------------------------
 
 def load_model_and_tokenizer(model_id, dtype, device, logger, tokenizer_override=None):
-    """Load HF model + tokenizer with appropriate backend."""
-    from transformers import AutoTokenizer, AutoModelForCausalLM
+    """Load model + tokenizer. Uses mamba_ssm for state-spaces/* models,
+    HF AutoModelForCausalLM for everything else."""
+    from transformers import AutoTokenizer
 
-    # Some models (e.g. state-spaces/mamba2-*) don't ship a tokenizer.
-    # They use the GPT-NeoX tokenizer from EleutherAI (The Pile).
+    # --- Tokenizer ---
+    # state-spaces models don't ship a tokenizer; they use GPT-NeoX.
     TOKENIZER_FALLBACKS = {
         "state-spaces/mamba2": "EleutherAI/gpt-neox-20b",
         "state-spaces/mamba-": "EleutherAI/gpt-neox-20b",
     }
-
     tokenizer_id = tokenizer_override or model_id
     if not tokenizer_override:
         for prefix, fallback in TOKENIZER_FALLBACKS.items():
@@ -148,24 +148,30 @@ def load_model_and_tokenizer(model_id, dtype, device, logger, tokenizer_override
 
     logger.info(f"Loading tokenizer from {tokenizer_id}")
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_id, trust_remote_code=True)
-
-    # Ensure pad token exists (Mamba models often don't have one)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    logger.info(f"Loading model from {model_id} (dtype={dtype})")
-    model = AutoModelForCausalLM.from_pretrained(
-        model_id,
-        torch_dtype=dtype,
-        device_map=device,
-        trust_remote_code=True,
-    )
-    model.eval()
+    # --- Model ---
+    use_mamba_ssm = "state-spaces/mamba" in model_id
 
-    # Log model info
+    if use_mamba_ssm:
+        from mamba_ssm.models.mixer_seq_simple import MambaLMHeadModel
+        logger.info(f"Loading model from {model_id} via mamba_ssm (dtype={dtype})")
+        actual_device = device if device != "auto" else "cuda"
+        model = MambaLMHeadModel.from_pretrained(
+            model_id, device=actual_device, dtype=dtype
+        )
+    else:
+        from transformers import AutoModelForCausalLM
+        logger.info(f"Loading model from {model_id} via AutoModelForCausalLM (dtype={dtype})")
+        model = AutoModelForCausalLM.from_pretrained(
+            model_id, torch_dtype=dtype, device_map=device, trust_remote_code=True,
+        )
+
+    model.eval()
     n_params = sum(p.numel() for p in model.parameters())
     logger.info(f"Model loaded: {n_params/1e9:.2f}B parameters, "
-                f"vocab_size={model.config.vocab_size}")
+                f"backend={'mamba_ssm' if use_mamba_ssm else 'transformers'}")
 
     return model, tokenizer
 
@@ -175,34 +181,73 @@ def load_model_and_tokenizer(model_id, dtype, device, logger, tokenizer_override
 def generate_with_logits(model, tokenizer, prompt, max_tokens, temperature, device):
     """Generate tokens and return stacked logits for generated tokens only.
 
+    Uses model.generate(output_scores=True) for HF models, and manual
+    autoregressive loop for mamba_ssm models (which don't support the
+    same generate API).
+
     Returns:
         logits: torch.Tensor of shape (gen_tokens, vocab_size) in float32
         gen_n_tokens: int, number of generated tokens
     """
-    inputs = tokenizer(prompt, return_tensors="pt").to(device)
-    prompt_len = inputs["input_ids"].shape[1]
+    inputs = tokenizer(prompt, return_tensors="pt")
+    input_ids = inputs["input_ids"].to(device)
 
+    is_mamba_ssm = hasattr(model, 'backbone')  # mamba_ssm MambaLMHeadModel
+
+    if is_mamba_ssm:
+        return _generate_mamba_ssm(model, input_ids, max_tokens, temperature)
+    else:
+        return _generate_hf(model, inputs, device, max_tokens, temperature)
+
+
+def _generate_hf(model, inputs, device, max_tokens, temperature):
+    """HF transformers generation with output_scores."""
+    inputs = {k: v.to(device) for k, v in inputs.items()}
     with torch.no_grad():
         outputs = model.generate(
             **inputs,
             max_new_tokens=max_tokens,
             temperature=temperature,
             do_sample=True,
-            top_k=0,           # disable top-k to match llama-cpp behavior
-            top_p=1.0,         # disable nucleus sampling
+            top_k=0,
+            top_p=1.0,
             output_scores=True,
             return_dict_in_generate=True,
         )
-
-    # outputs.scores is a tuple of (gen_tokens,) tensors, each (batch, vocab)
     if not outputs.scores:
         return None, 0
-
-    # Stack into (gen_tokens, vocab_size) and move to float32
     logits = torch.stack(outputs.scores, dim=0).squeeze(1).float()
-    gen_n_tokens = logits.shape[0]
+    return logits, logits.shape[0]
 
-    return logits, gen_n_tokens
+
+def _generate_mamba_ssm(model, input_ids, max_tokens, temperature):
+    """Manual autoregressive generation for mamba_ssm models.
+    Collects per-token logits before sampling."""
+    all_logits = []
+    cur_ids = input_ids
+
+    with torch.no_grad():
+        for _ in range(max_tokens):
+            out = model(cur_ids)
+            # out.logits shape: (batch, seq_len, vocab_size)
+            next_logits = out.logits[:, -1, :].float()  # (1, vocab)
+            all_logits.append(next_logits.squeeze(0))   # (vocab,)
+
+            # Sample
+            probs = torch.softmax(next_logits / temperature, dim=-1)
+            next_token = torch.multinomial(probs, num_samples=1)  # (1, 1)
+
+            # Check EOS
+            if next_token.item() == 0:  # GPT-NeoX EOS = 0
+                break
+
+            cur_ids = next_token
+
+    if not all_logits:
+        return None, 0
+
+    logits = torch.stack(all_logits, dim=0)  # (gen_tokens, vocab_size)
+    return logits, logits.shape[0]
 
 
 # --- Main -----------------------------------------------------------------
