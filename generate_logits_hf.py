@@ -222,9 +222,12 @@ def _generate_hf(model, inputs, device, max_tokens, temperature):
 
 def _generate_mamba_ssm(model, input_ids, max_tokens, temperature):
     """Manual autoregressive generation for mamba_ssm models.
-    Collects per-token logits before sampling."""
+    Collects per-token logits before sampling.
+
+    Concatenates generated tokens to input sequence each step
+    (mamba_ssm doesn't auto-cache state between forward calls)."""
     all_logits = []
-    cur_ids = input_ids
+    cur_ids = input_ids  # (1, prompt_len)
 
     with torch.no_grad():
         for _ in range(max_tokens):
@@ -241,7 +244,8 @@ def _generate_mamba_ssm(model, input_ids, max_tokens, temperature):
             if next_token.item() == 0:  # GPT-NeoX EOS = 0
                 break
 
-            cur_ids = next_token
+            # Append token to sequence for next forward pass
+            cur_ids = torch.cat([cur_ids, next_token], dim=1)
 
     if not all_logits:
         return None, 0
