@@ -147,16 +147,20 @@ The framework includes two prompt sets designed to test different hypotheses:
 |------|---------|---------|---------|
 | `prompts/prompts.jsonl` | 800 | wiki, news, fiction, code | Domain prompts with semantic context |
 | `prompts/prompts_neutral.jsonl` | 1000 | empty, random, explicit, neutral, nonsense | Neutral prompts with minimal semantic constraint |
+| `prompts/prompts_multilingual.jsonl` | 800 | wiki_pl, wiki_zh, wiki_ar, wiki_ja | Cross-lingual prompts (4 languages × 200) |
 
 The neutral prompts are designed to disentangle two hypotheses:
 - **H1**: Non-randomness is intrinsic to the model's learned representations
 - **H2**: Non-randomness is induced by the semantic constraints of the input prompts
 
+The multilingual prompts test whether ED is stable across languages with different families and scripts (Polish, Chinese, Arabic, Japanese). Requires a multilingual model (e.g. Qwen-2.5-32B).
+
 To rebuild prompts from source:
 
 ```bash
-python prompts/build_prompts_en.py       # domain prompts (requires datasets library)
-python prompts/build_neutral_prompts.py   # neutral prompts (no external dependencies)
+python prompts/build_prompts_en.py              # domain prompts (requires datasets library)
+python prompts/build_neutral_prompts.py          # neutral prompts (no external dependencies)
+python prompts/build_multilingual_prompts.py     # multilingual prompts (requires datasets library)
 ```
 
 ## Statistical Tests (F1-F8)
@@ -204,13 +208,17 @@ entropic-deviation/
 ├── calculate_metrics.py        # Step 2: statistical tests F1-F8
 ├── fix_missing_columns.py      # Utility: backfill rank/chkpt_id in CSVs
 ├── merge_checkpoints.py        # Utility: merge checkpoint files
-├── run_entropic_deviation.sh   # Full pipeline wrapper
+├── run_entropic_deviation.sh   # Full pipeline wrapper (GGUF models)
+├── run_mamba2.sh               # Mamba2-2.7B experiment
+├── run_multilingual.sh         # Cross-lingual experiment (Qwen-32B)
 ├── requirements.txt
 ├── prompts/
-│   ├── prompts.jsonl           # 800 domain prompts
-│   ├── prompts_neutral.jsonl   # 1000 neutral prompts
-│   ├── build_prompts_en.py     # Domain prompt generator
-│   └── build_neutral_prompts.py # Neutral prompt generator
+│   ├── prompts.jsonl                # 800 domain prompts (en)
+│   ├── prompts_neutral.jsonl        # 1000 neutral prompts
+│   ├── prompts_multilingual.jsonl   # 800 cross-lingual prompts (pl/zh/ar/ja)
+│   ├── build_prompts_en.py          # Domain prompt generator
+│   ├── build_neutral_prompts.py     # Neutral prompt generator
+│   └── build_multilingual_prompts.py # Multilingual prompt generator
 ├── tests/                      # Test suite (pytest)
 ├── results/                    # Experiment output (CSV)
 └── models/                     # GGUF models (gitignored)
@@ -222,6 +230,7 @@ entropic-deviation/
 - PyTorch 2.x (with CUDA support)
 - NVIDIA GPU (Pascal architecture or newer)
 - `llama-cpp-python` (not in `requirements.txt` — install separately with CUDA support)
+- For HF adapter: `transformers`; for Mamba2: also `mamba_ssm`, `causal_conv1d`
 
 ## Citation
 
