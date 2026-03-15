@@ -78,11 +78,35 @@ Key options:
 - `--save_interval` — flush CSV every N generations (default: 20)
 - `--save-logits` — also save `.pt` checkpoint files with full logit tensors
 - `--resume` — resume from the last saved position in ED CSV
+- `--shuffle` — randomize prompt×temperature order (recommended to avoid ordering confounds in F8)
 - `--n_gpu_layers` — layers to offload to GPU (-1 = all, default)
 
 The script handles SIGINT/SIGTERM gracefully, flushing buffered ED records to CSV before exit.
 
-Output CSV columns: `prompt, temp, seq_len, gen_time, timestamp, ED_mean, ED_std, model, model_size, domain`.
+Output CSV columns: `prompt, temp, seq_len, gen_time, timestamp, ED_mean, ED_std, model, model_size, domain, rank, chkpt_id`.
+
+### 3b. Non-GGUF models (Mamba2, RWKV, etc.)
+
+For models without GGUF quantizations, use the HuggingFace adapter:
+
+```bash
+python generate_logits_hf.py \
+    --model state-spaces/mamba2-2.7b \
+    --prompts prompts/prompts.jsonl \
+    --temps 0.7 1.0 1.3 \
+    --max_tokens 128 \
+    --ed-out results/ed_mamba2_2.7b.csv \
+    --shuffle \
+    --dtype float16
+```
+
+This produces the same CSV format as `generate_logits.py`. Requires `transformers`; for Mamba2 models, also install `mamba_ssm` and `causal_conv1d` for CUDA-accelerated inference.
+
+A convenience script for the full Mamba2 experiment is provided:
+
+```bash
+./run_mamba2.sh
+```
 
 ### 4. Run statistical tests (F1-F8)
 
@@ -158,6 +182,10 @@ python prompts/build_neutral_prompts.py   # neutral prompts (no external depende
   ```bash
   python merge_checkpoints.py --pattern "results/logits_*_chkpt_*.pt" --output merged.pt
   ```
+- **`fix_missing_columns.py`** — backfill `rank` and `chkpt_id` into CSVs from older pipeline runs:
+  ```bash
+  python fix_missing_columns.py --batch-size 20
+  ```
 
 ## Testing
 
@@ -170,9 +198,11 @@ python -m pytest tests/
 
 ```
 entropic-deviation/
-├── generate_logits.py          # Step 1: multi-GPU inference + inline ED
+├── generate_logits.py          # Step 1: multi-GPU inference + inline ED (GGUF/llama-cpp)
+├── generate_logits_hf.py       # Step 1 alt: HuggingFace inference (Mamba2, RWKV, etc.)
 ├── calculate_ed.py             # Standalone: compute ED from .pt checkpoints
 ├── calculate_metrics.py        # Step 2: statistical tests F1-F8
+├── fix_missing_columns.py      # Utility: backfill rank/chkpt_id in CSVs
 ├── merge_checkpoints.py        # Utility: merge checkpoint files
 ├── run_entropic_deviation.sh   # Full pipeline wrapper
 ├── requirements.txt

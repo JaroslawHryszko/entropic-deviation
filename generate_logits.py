@@ -196,6 +196,8 @@ def main():
                    help="Number of layers to offload to GPU (-1 = all)")
     p.add_argument("--resume", action="store_true",
                    help="Resume from last saved position in ED CSV")
+    p.add_argument("--shuffle", action="store_true",
+                   help="Shuffle prompt×temperature order (recommended to avoid F8 ordering confounds)")
     p.add_argument("--progress-file", default=None,
                    help="Path to progress status file (updated every save_interval)")
     args = p.parse_args()
@@ -224,6 +226,12 @@ def main():
     combos = [(t, prompt) for t in args.temps for prompt in all_prompts]
     total = len(combos)
     logger.info(f"Total combinations: {total} ({len(all_prompts)} prompts × {len(args.temps)} temps)")
+
+    if args.shuffle:
+        import random
+        random.seed(42)  # reproducible shuffle
+        random.shuffle(combos)
+        logger.info("Shuffled prompt×temperature order (seed=42)")
 
     # --- Resume logic (from ED CSV) ---
     resume_idx = 0
