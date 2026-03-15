@@ -128,12 +128,26 @@ def write_progress(path, model_name, processed, total, t_start_wall, ed_mean_las
 
 # --- Model loading --------------------------------------------------------
 
-def load_model_and_tokenizer(model_id, dtype, device, logger):
+def load_model_and_tokenizer(model_id, dtype, device, logger, tokenizer_override=None):
     """Load HF model + tokenizer with appropriate backend."""
     from transformers import AutoTokenizer, AutoModelForCausalLM
 
-    logger.info(f"Loading tokenizer from {model_id}")
-    tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
+    # Some models (e.g. state-spaces/mamba2-*) don't ship a tokenizer.
+    # They use the GPT-NeoX tokenizer from EleutherAI (The Pile).
+    TOKENIZER_FALLBACKS = {
+        "state-spaces/mamba2": "EleutherAI/gpt-neox-20b",
+        "state-spaces/mamba-": "EleutherAI/gpt-neox-20b",
+    }
+
+    tokenizer_id = tokenizer_override or model_id
+    if not tokenizer_override:
+        for prefix, fallback in TOKENIZER_FALLBACKS.items():
+            if prefix in model_id:
+                tokenizer_id = fallback
+                break
+
+    logger.info(f"Loading tokenizer from {tokenizer_id}")
+    tokenizer = AutoTokenizer.from_pretrained(tokenizer_id, trust_remote_code=True)
 
     # Ensure pad token exists (Mamba models often don't have one)
     if tokenizer.pad_token is None:
@@ -201,6 +215,8 @@ def main():
                    help="HuggingFace model ID (e.g. state-spaces/mamba2-2.7b)")
     p.add_argument("--model-name", default=None,
                    help="Display name for CSV (default: derived from --model)")
+    p.add_argument("--tokenizer", default=None,
+                   help="Tokenizer ID if different from model (e.g. EleutherAI/gpt-neox-20b)")
     p.add_argument("--prompts", required=True,
                    help="Path to prompts JSONL file")
     p.add_argument("--temps", nargs="+", type=float, default=[0.7, 1.0, 1.3],
@@ -273,7 +289,9 @@ def main():
     write_header = (resume_idx == 0) or not os.path.exists(args.ed_out)
 
     # Load model
-    model, tokenizer = load_model_and_tokenizer(args.model, dtype, device, logger)
+    model, tokenizer = load_model_and_tokenizer(
+        args.model, dtype, device, logger, tokenizer_override=args.tokenizer
+    )
 
     # If device_map="auto" was used, find the actual device
     if hasattr(model, 'device'):
