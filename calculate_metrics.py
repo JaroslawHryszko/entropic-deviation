@@ -31,6 +31,10 @@ def main():
     ap.add_argument("csv", help="Path to ED results CSV")
     ap.add_argument("--out", default="results_FT.csv", help="Output CSV for test results")
     ap.add_argument("--log", default=None, help="Log file path")
+    ap.add_argument(
+        "--extra-csv", nargs="*", default=[],
+        help="Additional ED CSVs to merge for F3 size regression (e.g. pilot data)"
+    )
     args = ap.parse_args()
 
     logger = setup_logger(args.log)
@@ -80,12 +84,30 @@ def main():
             logger.error(f"F2 post-hoc Tukey HSD failed: {e}")
 
     # F3: size slope (OLS, needs >1 model sizes)
+    # When --extra-csv is provided, merge additional data for wider size range.
     try:
-        if "model_size" in df.columns and df["model_size"].dropna().nunique() > 1:
-            clean = df[["ED_mean", "model_size"]].dropna()
+        f3_df = df
+        if args.extra_csv:
+            extras = []
+            for path in args.extra_csv:
+                try:
+                    extra = pd.read_csv(path)
+                    extras.append(extra)
+                    logger.info(f"F3: merged {len(extra)} rows from {path}")
+                except Exception as e:
+                    logger.warning(f"F3: failed to read {path}: {e}")
+            if extras:
+                f3_df = pd.concat([df] + extras, ignore_index=True)
+
+        if "model_size" in f3_df.columns and f3_df["model_size"].dropna().nunique() > 1:
+            clean = f3_df[["ED_mean", "model_size"]].dropna()
+            n_sizes = clean["model_size"].nunique()
             mdl = sm.OLS(clean["ED_mean"], sm.add_constant(clean["model_size"])).fit()
             p = mdl.pvalues["model_size"]
-            logger.info(f"F3 (OLS size): slope={mdl.params['model_size']:.2e}, p={p:.2e}")
+            logger.info(
+                f"F3 (OLS size, {n_sizes} model sizes, {len(clean)} obs): "
+                f"slope={mdl.params['model_size']:.2e}, R²={mdl.rsquared:.4f}, p={p:.2e}"
+            )
         else:
             p = float("nan")
             logger.info("F3 (OLS size): skipped (single model size)")
@@ -150,13 +172,22 @@ def main():
         p = float("nan")
     rows.append(("F7", p))
 
-    # F8: rank-independence (OLS slope)
+    # F8: rank-independence (OLS slope, controlling for temperature)
+    # Rank correlates with temperature when temps run sequentially,
+    # so we partial out temp to isolate genuine generation drift.
     try:
         if "rank" in df.columns and df["rank"].nunique() > 1:
-            f8_data = df[["ED_mean", "rank"]].dropna()
-            mdl = sm.OLS(f8_data["ED_mean"], sm.add_constant(f8_data["rank"])).fit()
+            f8_cols = ["ED_mean", "rank"]
+            has_temp = "temp" in df.columns and df["temp"].nunique() > 1
+            if has_temp:
+                f8_cols.append("temp")
+            f8_data = df[f8_cols].dropna()
+            X = sm.add_constant(f8_data[["rank", "temp"]] if has_temp else f8_data[["rank"]])
+            mdl = sm.OLS(f8_data["ED_mean"], X).fit()
             p = mdl.pvalues["rank"]
-            logger.info(f"F8 (OLS rank): slope={mdl.params['rank']:.2e}, p={p:.2e}")
+            slope = mdl.params["rank"]
+            ctrl = " | temp" if has_temp else ""
+            logger.info(f"F8 (OLS rank{ctrl}): slope={slope:.2e}, p={p:.2e}")
         else:
             p = float("nan")
             logger.info("F8 (OLS rank): skipped (single rank)")
