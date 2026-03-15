@@ -85,11 +85,14 @@ The script handles SIGINT/SIGTERM gracefully, flushing buffered ED records to CS
 
 Output CSV columns: `prompt, temp, seq_len, gen_time, timestamp, ED_mean, ED_std, model, model_size, domain, rank, chkpt_id`.
 
-### 3b. Non-GGUF models (Mamba2, RWKV, etc.)
+### 3b. Non-GGUF models (Mamba, Mamba2, etc.)
 
-For models without GGUF quantizations, use the HuggingFace adapter:
+For models without GGUF quantizations, use the HuggingFace adapter. It auto-detects `state-spaces/*` models and loads them via the native `mamba_ssm` library (required for original checkpoints that aren't in HF transformers format):
 
 ```bash
+# Install dependencies (requires CUDA toolkit and Ampere+ GPU for mamba_ssm)
+pip install transformers mamba_ssm causal_conv1d
+
 python generate_logits_hf.py \
     --model state-spaces/mamba2-2.7b \
     --prompts prompts/prompts.jsonl \
@@ -100,7 +103,7 @@ python generate_logits_hf.py \
     --dtype float16
 ```
 
-This produces the same CSV format as `generate_logits.py`. Requires `transformers`; for Mamba2 models, also install `mamba_ssm` and `causal_conv1d` for CUDA-accelerated inference.
+For non-Mamba HF models, the script uses `AutoModelForCausalLM` and only requires `transformers`.
 
 A convenience script for the full Mamba2 experiment is provided:
 
@@ -169,12 +172,12 @@ python prompts/build_multilingual_prompts.py     # multilingual prompts (require
 |------|----------------|--------|
 | F1 | Mean ED = 0 | One-sample t-test |
 | F2 | No temperature effect | One-way ANOVA + Tukey HSD |
-| F3 | No model size effect | OLS regression |
+| F3 | No model size effect | OLS regression (supports `--extra-csv` for multi-model) |
 | F4 | ED independent of temperature | Pearson correlation |
 | F5 | No autoregressive persistence | AR(1) coefficient |
 | F6 | ED independent of sequence length | Pearson correlation |
 | F7 | Uniform ED across domains | Kruskal-Wallis |
-| F8 | ED independent of generation rank | OLS slope |
+| F8 | ED independent of generation rank | OLS slope, controlling for temperature |
 
 ## Utility Scripts
 
