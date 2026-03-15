@@ -6,6 +6,11 @@ scipy
 statsmodels           # AR(1) & OLS
 psutil
 
+# HuggingFace inference adapter (generate_logits_hf.py)
+transformers>=4.45
+# For Mamba2 models (optional, enables CUDA kernels):
+#   pip install mamba_ssm causal_conv1d
+
 # Prompt generation (optional, only needed to rebuild prompts/)
 datasets==2.*
 nltk
