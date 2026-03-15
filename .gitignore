@@ -148,8 +148,13 @@ results/.progress
 CLAUDE.md
 .claude/
 
-# Paper (LaTeX) — local only
-entropic-deviation-paper/
+# LaTeX artifacts
+*.aux
+*.bbl
+*.blg
+*.log
+*.out
+*.pdf
 
 # Private notes
 notes/
