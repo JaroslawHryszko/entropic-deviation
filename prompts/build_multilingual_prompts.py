@@ -57,12 +57,14 @@ from datasets import load_dataset
 QUOTA_PER_LANG = 200   # prompts per language
 SEED = 42
 
-# Wikipedia dataset names per language
+# Wikipedia dataset configs per language.
+# Use wikimedia/wikipedia (official, newer dumps) with 20231101 snapshots.
+# Fallback: HuggingFaceFW/finewiki if wikimedia/wikipedia fails.
 WIKI_CONFIGS = {
-    "pl": "20220301.pl",
-    "zh": "20220301.zh",
-    "ar": "20220301.ar",
-    "ja": "20220301.ja",
+    "pl": ("wikimedia/wikipedia", "20231101.pl"),
+    "zh": ("wikimedia/wikipedia", "20231101.zh"),
+    "ar": ("wikimedia/wikipedia", "20231101.ar"),
+    "ja": ("wikimedia/wikipedia", "20231101.ja"),
 }
 
 OUT_PATH = "prompts/prompts_multilingual.jsonl"
@@ -139,9 +141,21 @@ def is_valid_sentence(s, lang, min_chars=20, max_chars=300):
 
 def sample_wiki(lang, config, n, max_articles=50000):
     """Sample n sentences from Wikipedia in given language."""
-    print(f"  Loading Wikipedia {config}...")
-    ds = load_dataset("wikipedia", config, split="train",
-                      streaming=True, trust_remote_code=True)
+    ds_name, ds_config = config
+    print(f"  Loading {ds_name}/{ds_config}...")
+
+    try:
+        ds = load_dataset(ds_name, ds_config, split="train",
+                          streaming=True, trust_remote_code=True)
+    except Exception as e1:
+        # Fallback to HuggingFaceFW/finewiki
+        print(f"  Primary source failed ({e1}), trying HuggingFaceFW/finewiki...")
+        try:
+            ds = load_dataset("HuggingFaceFW/finewiki", lang, split="train",
+                              streaming=True, trust_remote_code=True)
+        except Exception as e2:
+            print(f"  Fallback also failed: {e2}")
+            return []
 
     sents = []
     for row in ds.take(max_articles):
