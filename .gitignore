@@ -151,6 +151,9 @@ CLAUDE.md
 # Paper (LaTeX) — local only
 entropic-deviation-paper/
 
+# Private notes
+notes/
+
 # Spyder project settings
 .spyderproject
 .spyproject
