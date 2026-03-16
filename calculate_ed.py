@@ -67,7 +67,7 @@ def process_one_bundle(fp, out_csv, write_header, model_name, logger=None):
                 ed_t = entropic_deviation(logits)
             rec = meta[i].copy()
             rec["ED_mean"] = ed_t.mean().item()
-            rec["ED_std"]  = ed_t.std().item()
+            rec["ED_std"]  = ed_t.std(correction=0).item() if len(ed_t) > 1 else 0.0
             rec["model"]   = model_name
             rec["timestamp_processed"] = datetime.now().isoformat()
             rec["model_size"] = _parse_model_size(model_name)

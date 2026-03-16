@@ -405,7 +405,7 @@ def main():
         with torch.no_grad():
             ed_t = entropic_deviation(logits)
         ed_mean = ed_t.mean().item()
-        ed_std = ed_t.std().item()
+        ed_std = ed_t.std(correction=0).item() if len(ed_t) > 1 else 0.0
         ed_mean_last = ed_mean
 
         t_end = time.perf_counter()
