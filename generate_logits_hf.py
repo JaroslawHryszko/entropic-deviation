@@ -311,11 +311,25 @@ def main():
         device = "cuda" if torch.cuda.is_available() else "cpu"
     logger.info(f"Device: {device}, dtype: {args.dtype}")
 
-    # Load prompts
+    # Load prompts (same format as generate_logits.py: prepend domain prefix)
     prompts = []
     with open(args.prompts) as f:
         for line in f:
-            prompts.append(json.loads(line)["prompt"])
+            line = line.strip()
+            if not line:
+                continue
+            if line.startswith('{'):
+                try:
+                    record = json.loads(line)
+                    if 'domain' in record:
+                        prompt = f"{record['domain']}: {record['prompt']}"
+                    else:
+                        prompt = record['prompt']
+                    prompts.append(prompt)
+                except Exception:
+                    continue
+            else:
+                prompts.append(line)
     logger.info(f"Loaded {len(prompts)} prompts from {args.prompts}")
 
     # Build all (temp, prompt) combos
