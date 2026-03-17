@@ -195,7 +195,7 @@ def main():
         domain = f"wiki_{lang}"
         for s in sentences:
             all_prompts.append({
-                "prompt": f"{domain}: {s}",
+                "prompt": s,
                 "domain": domain,
                 "lang": lang,
                 "len": len(s.split()) if lang not in ("zh", "ja") else len(s),
