@@ -1,7 +1,7 @@
 model: mamba2-2.7b
-progress: 2940/3000 (98.0%)
-elapsed: 4.8h
-rate: 0.17 gen/s
-eta: 0.1h
-last_ED: 0.3672
-updated: 2026-03-16T06:37:43.028121
+progress: 3000/3000 (100.0%)
+elapsed: 4.6h
+rate: 0.18 gen/s
+eta: 0.0h
+last_ED: 0.4954
+updated: 2026-03-17T06:26:02.111130
