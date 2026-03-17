@@ -1,0 +1,6 @@
+model:    Qwen2.5-32B-Instruct
+progress: 2400/2400  (100.0%)
+last ED:  0.4008
+elapsed:  30h 59m 57s
+ETA:      0h 00m 00s
+updated:  2026-03-17 04:29:14
