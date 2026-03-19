@@ -59,7 +59,7 @@ python generate_logits.py \
     --save_interval $SAVE_INTERVAL \
     --shuffle \
     --log "${LOGS_DIR}/${MODEL_NAME}_multilingual_${TIMESTAMP}.log" \
-    --progress-file "${RESULTS_DIR}/progress_${MODEL_NAME}_multilingual.txt" \
+    --progress-file "${RESULTS_DIR}/.progress" \
     $RESUME_FLAG
 
 echo ""

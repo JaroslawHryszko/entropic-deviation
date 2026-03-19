@@ -179,6 +179,25 @@ python prompts/build_multilingual_prompts.py     # multilingual prompts (require
 | F7 | Uniform ED across domains | Kruskal-Wallis |
 | F8 | ED independent of generation rank | OLS slope, controlling for temperature |
 
+## Analysis Scripts
+
+- **`analyze_vocab_multilingual.py`** — tokenizer-side vocabulary analysis. Partitions the tokenizer vocabulary by Unicode script, maps scripts to languages, and computes prompt-side token usage statistics (fertility, unique tokens, frequency-based concentration). No model inference needed:
+  ```bash
+  python analyze_vocab_multilingual.py
+  ```
+  Output: `results/vocab_analysis_multilingual.csv`
+
+- **`analyze_vocab_generation.py`** — generation-side vocabulary analysis. Runs a short inference pass (50 prompts x 5 languages x temp=1.0) to measure vocab metrics from actual model output:
+  ```bash
+  python analyze_vocab_generation.py
+  ```
+  Measures per language:
+  - `vocab_used` — unique token IDs in generated text
+  - `vocab_concentration` — mean probability mass in top-K tokens per position (from softmax of logits)
+  - `mean_fertility` — tokens per character in prompts
+
+  Output: `results/vocab_generation_multilingual.csv`
+
 ## Utility Scripts
 
 - **`calculate_ed.py`** — standalone checkpoint-to-CSV processor (for reprocessing `.pt` files saved with `--save-logits`):
@@ -209,6 +228,8 @@ entropic-deviation/
 ├── generate_logits_hf.py       # Step 1 alt: HuggingFace inference (Mamba2, RWKV, etc.)
 ├── calculate_ed.py             # Standalone: compute ED from .pt checkpoints
 ├── calculate_metrics.py        # Step 2: statistical tests F1-F8
+├── analyze_vocab_multilingual.py # Analysis: tokenizer vocab partition per language
+├── analyze_vocab_generation.py # Analysis: generation-side vocab usage per language
 ├── fix_missing_columns.py      # Utility: backfill rank/chkpt_id in CSVs
 ├── merge_checkpoints.py        # Utility: merge checkpoint files
 ├── run_entropic_deviation.sh   # Full pipeline wrapper (GGUF models)

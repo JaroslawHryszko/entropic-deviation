@@ -1,0 +1,6 @@
+language,ED_mean,vocab_allocated,vocab_used,vocab_concentration_top100,vocab_concentration_top1000,vocab_concentration_top5000,mean_fertility,mean_prompt_tokens
+en,0.329,104969,3247,0.5082,0.786,1.0,0.2134,27.7
+pl,0.401,104969,1640,0.4203,0.9215,1.0,0.3499,40.8
+ja,0.388,38877,1566,0.5141,0.9274,1.0,0.7324,39.0
+zh,0.395,37115,1852,0.4061,0.8556,1.0,0.7169,29.7
+ar,0.408,15429,1042,0.5913,0.9928,1.0,0.4207,29.3

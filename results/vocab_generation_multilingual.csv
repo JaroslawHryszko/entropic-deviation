@@ -1,0 +1,6 @@
+language,ED_mean,vocab_used,vocab_used_argmax,vocab_concentration_top100,vocab_concentration_top1000,vocab_concentration_top5000,mean_fertility,mean_prompt_tokens,mean_gen_tokens,total_gen_tokens,n_prompts
+en,0.329,1996,1849,0.296,0.3036,0.3228,0.2207,27.5,127.8,6388,50
+pl,0.401,1815,1768,0.3324,0.3394,0.3578,0.3519,44.2,125.0,6250,50
+ja,0.388,1358,1337,0.3734,0.3844,0.4023,0.7467,37.6,128.0,6400,50
+zh,0.395,1808,1720,0.4017,0.4119,0.4288,0.7504,31.1,128.1,6404,50
+ar,0.408,1712,1701,0.4131,0.4208,0.4371,0.413,27.8,126.4,6322,50
