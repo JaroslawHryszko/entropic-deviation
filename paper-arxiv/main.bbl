@@ -1,0 +1,90 @@
+\begin{thebibliography}{13}
+\providecommand{\natexlab}[1]{#1}
+\providecommand{\url}[1]{\texttt{#1}}
+\expandafter\ifx\csname urlstyle\endcsname\relax
+  \providecommand{\doi}[1]{doi: #1}\else
+  \providecommand{\doi}{doi: \begingroup \urlstyle{rm}\Url}\fi
+
+\bibitem[Coronado-Bl{\'a}zquez(2025)]{coronado2025deterministic}
+Javier Coronado-Bl{\'a}zquez.
+\newblock Deterministic or probabilistic? the psychology of {LLMs} as random
+  number generators.
+\newblock \emph{arXiv preprint arXiv:2502.19965}, 2025.
+
+\bibitem[Dao \& Gu(2024)Dao and Gu]{dao2024mamba2}
+Tri Dao and Albert Gu.
+\newblock Transformers are {SSMs}: Generalized models and efficient algorithms
+  through structured state space duality.
+\newblock \emph{arXiv preprint arXiv:2405.21060}, 2024.
+
+\bibitem[Gerganov(2023)]{llama_cpp}
+Georgi Gerganov.
+\newblock llama.cpp.
+\newblock \url{https://github.com/ggerganov/llama.cpp}, 2023.
+
+\bibitem[Gu \& Dao(2023)Gu and Dao]{gu2023mamba}
+Albert Gu and Tri Dao.
+\newblock Mamba: Linear-time sequence modeling with selective state spaces.
+\newblock \emph{arXiv preprint arXiv:2312.00752}, 2023.
+
+\bibitem[Guo et~al.(2017)Guo, Pleiss, Sun, and Weinberger]{guo2017calibration}
+Chuan Guo, Geoff Pleiss, Yu~Sun, and Kilian~Q Weinberger.
+\newblock On calibration of modern neural networks.
+\newblock \emph{International Conference on Machine Learning}, pp.\
+  1321--1330, 2017.
+
+\bibitem[Holtzman et~al.(2020)Holtzman, Buys, Du, Forbes, and
+  Choi]{holtzman2020curious}
+Ari Holtzman, Jan Buys, Li~Du, Maxwell Forbes, and Yejin Choi.
+\newblock The curious case of neural text degeneration.
+\newblock In \emph{International Conference on Learning Representations}, 2020.
+
+\bibitem[Hopkins \& Renda(2023)Hopkins and Renda]{hopkins2023llm_sampling}
+Aspen~K Hopkins and Alex Renda.
+\newblock Can {LLMs} generate random numbers? evaluating {LLM} sampling in
+  controlled domains.
+\newblock In \emph{ICML 2023 Workshop on Sampling and Optimization in Discrete
+  Space (SODS)}, 2023.
+\newblock URL \url{https://people.csail.mit.edu/renda/llm-sampling-paper}.
+
+\bibitem[Piantadosi(2014)]{piantadosi2014zipf}
+Steven~T Piantadosi.
+\newblock {Zipf's} word frequency law in natural language: A critical review
+  and future directions.
+\newblock \emph{Psychonomic Bulletin \& Review}, 21\penalty0 (5):\penalty0
+  1112--1130, 2014.
+
+\bibitem[Rust et~al.(2021)Rust, Pfeiffer, Vuli{\'c}, Ruder, and
+  Gurevych]{rust2021good}
+Phillip Rust, Jonas Pfeiffer, Ivan Vuli{\'c}, Sebastian Ruder, and Iryna
+  Gurevych.
+\newblock How good is your tokenizer? on the monolingual performance of
+  multilingual language models.
+\newblock In \emph{Proceedings of the 59th Annual Meeting of the Association
+  for Computational Linguistics}, pp.\  3118--3135, 2021.
+
+\bibitem[Sennrich et~al.(2016)Sennrich, Haddow, and Birch]{sennrich2016neural}
+Rico Sennrich, Barry Haddow, and Alexandra Birch.
+\newblock Neural machine translation of rare words with subword units.
+\newblock \emph{arXiv preprint arXiv:1508.07909}, 2016.
+
+\bibitem[Vaswani et~al.(2017)Vaswani, Shazeer, Parmar, Uszkoreit, Jones, Gomez,
+  Kaiser, and Polosukhin]{vaswani2017attention}
+Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones,
+  Aidan~N Gomez, {\L}ukasz Kaiser, and Illia Polosukhin.
+\newblock Attention is all you need.
+\newblock In \emph{Advances in Neural Information Processing Systems},
+  volume~30, 2017.
+
+\bibitem[Zhao et~al.(2026)Zhao, Du, and Wang]{zhao2026bad_dice}
+Minda Zhao, Yilun Du, and Mengyu Wang.
+\newblock Large language models are bad dice players: {LLMs} struggle to
+  generate random numbers from statistical distributions.
+\newblock \emph{arXiv preprint arXiv:2601.05414}, 2026.
+
+\bibitem[Zipf(1949)]{zipf1949human}
+George~Kingsley Zipf.
+\newblock \emph{Human Behavior and the Principle of Least Effort}.
+\newblock Addison-Wesley, 1949.
+
+\end{thebibliography}

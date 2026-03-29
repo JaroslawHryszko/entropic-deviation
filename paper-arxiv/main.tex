@@ -18,10 +18,10 @@
 
 \title{The Randomness Floor: Measuring Intrinsic Non-Randomness\\in Language Model Token Distributions}
 
-\author{Jaros{\l}aw Hryszko \\
+\author{Jaros{\l}aw Hryszko\thanks{ORCID: 0000-0002-4207-1080} \\
 Institute of Computer Science\\
 Faculty of Mathematics and Computer Science\\
-Jagiellonian University, Krak{'o}w, Poland\\
+Jagiellonian University, Krak{\'o}w, Poland\\
 \texttt{jaroslaw.hryszko@uj.edu.pl}
 }
 
@@ -254,11 +254,25 @@ The term ``randomness floor'' is chosen deliberately. ED under neutral prompts r
 
 This is not surprising in principle. Any neural network trained on non-uniform data will develop non-uniform output distributions. What is informative is the \emph{magnitude} of the effect (ED $\approx 0.30$ for transformers means the model's entropy deficit relative to uniform is 30\% of its maximum possible value), its \emph{stability} across independently trained models, and its sensitivity to architectural choices but not to temperature.
 
+\subsection{Relationship to Zipf's law}
+
+Natural language token frequencies follow a Zipfian distribution~\citep{zipf1949human, piantadosi2014zipf}, and models trained on such data should reflect this structure. A natural question is whether the observed ED simply recapitulates the training distribution's inherent non-uniformity. If one computes the ED of a Zipfian distribution with exponent $\alpha \approx 1.0$ (typical of English) over a vocabulary of $V = 150{,}000$ tokens, the resulting value provides a theoretical baseline. If the measured model ED exceeds this baseline, the model has learned concentration patterns beyond what raw corpus frequencies would predict. If it falls below, the model's distributional smoothing partially counteracts the Zipfian structure of its training data.
+
+This comparison is not performed in the present work, but it constitutes a direct, falsifiable test of whether the randomness floor reflects something beyond corpus statistics. The convergence of three independently trained transformers on ED $\approx 0.31$ is suggestive: if the floor were purely a function of training data distributions, models trained on different corpora with different preprocessing would be expected to diverge more than they do.
+
+\subsection{Relationship to perplexity}
+
+ED and perplexity are mathematically related. Since $\ED = 1 - H(p) / \log V$ and perplexity is $\exp(H(p))$, lower perplexity (better next-token prediction) implies higher ED (greater distributional concentration). However, perplexity is typically measured on held-out text where the model has meaningful context, while the intrinsic ED is measured under conditions of minimal context. A model could have excellent perplexity on natural text while having modest intrinsic ED, if its concentration is context-dependent. Conversely, a model with high intrinsic ED would appear ``confident'' even in the absence of grounds for confidence. Comparing intrinsic ED with perplexity across models may reveal whether distributional concentration scales with prediction quality or represents an independent structural property.
+
 \subsection{Implications for understanding model internals}
 
 The convergence of three transformer families on nearly identical ED values, including their domain-level profiles ($\rho > 0.93$), suggests that the randomness floor may be a property of the transformer architecture and the statistical structure of natural language rather than of any particular training corpus or procedure. This convergence occurs despite vocabulary sizes ranging from 128K to 256K tokens, confirming that the normalization by $\log V$ in Equation~\ref{eq:ed} effectively controls for vocabulary differences.
 
 The qualitative difference between transformers and Mamba2, particularly the reversed temperature sensitivity, points to a fundamental architectural distinction. In a transformer, the attention mechanism produces logit distributions that are already sharply concentrated; temperature scaling operates on distributions that have already ``decided'' their shape through attention. In an SSM, the recurrent state dynamics produce logits through a different computational pathway, one that appears more sensitive to the flattening effect of temperature division. Understanding why these architectures respond so differently to the same scaling operation may illuminate their respective computational strategies.
+
+\subsection{Implications for sampling and decoding}
+
+If the model's baseline distribution is already far from uniform (ED $\approx 0.30$), then common decoding strategies operate on a distribution that is pre-concentrated before any context is provided. Top-$k$ and nucleus (top-$p$) sampling~\citep{holtzman2020curious} truncate distributions that are already sharp; temperature scaling modulates something that is already far from flat. This suggests that the effective diversity of sampled outputs is bounded not only by the decoding strategy but also by the intrinsic concentration of the model's distributional prior. Characterizing this prior may help explain why certain decoding hyperparameters produce qualitatively similar outputs across wide parameter ranges.
 
 \subsection{The multilingual gradient}
 
@@ -266,9 +280,32 @@ The finding that language modulates ED independently of tokenization raises ques
 
 This interpretation is speculative and would require targeted experiments to confirm. What the data do establish is that the effect is real, large (Cohen's $d > 2$ for all contrasts with English), and not reducible to tokenizer artifacts.
 
+\subsection{Threats to validity}
+
+\paragraph{Instruction tuning confound.}
+All main-study models are instruction-tuned variants (Gemma-2-IT, Qwen-2.5-Instruct, Llama-3.3-Instruct). RLHF and instruction fine-tuning reshape logit distributions to produce helpful, harmless outputs. The observed randomness floor may therefore reflect the combined effect of pretraining \emph{and} alignment, rather than pretraining alone. Base (non-instruct) models may exhibit different ED profiles. This confound applies to the absolute values of ED; it is less likely to affect cross-model comparisons (all three transformers underwent different fine-tuning procedures yet converged) or the architectural contrast with Mamba2 (which is a base model).
+
+\paragraph{Training data overlap.}
+The convergence of three transformer families on ED $\approx 0.31$ could reflect shared training data (Common Crawl, Wikipedia, and similar web corpora appear in most large-scale training sets) rather than architectural universality. Disentangling data from architecture would require models trained on fundamentally different corpora, which is rarely feasible with publicly available models.
+
+\paragraph{Single SSM.}
+The claim that SSMs exhibit a qualitatively different ED regime rests on a single model (Mamba2-2.7B). While the effect size is large (2$\times$ the transformer ED), generalization to all SSMs is premature. Testing additional SSM architectures (RWKV, Mamba-1, linear attention variants) and Mamba2 at other scales is necessary before drawing architectural conclusions.
+
+\paragraph{Autoregressive generation path.}
+ED is measured over sequences generated autoregressively: the sampled token at position $t$ becomes context for position $t+1$. The measured ED therefore depends not only on the model but also on the particular generation path. Different random seeds at the same temperature would produce different token sequences and potentially different per-position ED values, though the mean ED over many positions is expected to be stable.
+
+\paragraph{BOS and system prompt contamination.}
+The ``empty string'' neutral prompt is not truly empty. The tokenizer prepends a beginning-of-sequence (BOS) token, and instruction-tuned models may implicitly condition on a system prompt template even when none is provided. The model's response to an ``empty'' input is thus a response to minimal but nonzero context. The random ASCII and nonsense syllable conditions partially address this concern by providing context that is present but semantically vacuous.
+
 \subsection{Limitations}
 
-The study has several limitations. First, the multilingual analysis uses a single model (Qwen-2.5 32B); testing additional models would strengthen the cross-lingual findings. Second, all models were run in Q4\_K\_M quantization, which may introduce small distributional shifts relative to full-precision inference. Third, the neutral prompt categories, while diverse, may not exhaust the space of minimal-context inputs. Fourth, the pilot and main studies use different models at different scales, making it difficult to fully separate scale effects from model-specific effects. Finally, the study reports ED as a mean over token positions, which may obscure position-dependent patterns. The within-sequence standard deviation partially addresses this, but a full positional analysis could reveal additional structure.
+Beyond the threats above, several practical limitations apply. The multilingual analysis uses a single model (Qwen-2.5 32B); testing additional models would strengthen the cross-lingual findings. All models were run in Q4\_K\_M quantization, which may introduce small distributional shifts relative to full-precision inference. The temperature range (0.7--1.3) covers common practice but excludes extremes that might reveal nonlinear behavior. Finally, the study reports ED as a mean over token positions, which may obscure position-dependent patterns.
+
+% ================================================================
+\section{Future work}
+\label{sec:future}
+
+Several directions follow directly from the present findings. First, comparing base and instruction-tuned variants of the same model family (e.g., Llama-3.3 base vs. Instruct) would isolate the contribution of alignment to the randomness floor. Second, computing the ED of empirical token frequency distributions from training corpora would establish a Zipfian baseline against which model ED can be compared. Third, testing additional SSM architectures (RWKV, Mamba-1, RetNet) and Mamba2 at larger scales would clarify whether the high-ED, temperature-sensitive regime is specific to Mamba2 or characteristic of recurrent architectures generally. Fourth, extending the temperature range to extremes ($T < 0.3$, $T > 2.0$) may reveal phase transitions or saturation effects in ED. Fifth, a positional analysis of ED (how concentration varies across token positions within a generation) could reveal whether the randomness floor is uniform or exhibits structure related to sequence position, attention patterns, or generation length. Finally, the relationship between intrinsic ED and standard evaluation metrics (perplexity, downstream task performance) deserves systematic investigation.
 
 % ================================================================
 \section{Conclusion}
