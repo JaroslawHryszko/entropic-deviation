@@ -10,6 +10,7 @@
 \usepackage{amssymb}
 \usepackage{multirow}
 \usepackage{xcolor}
+\usepackage{float}
 \usepackage{lineno}
 
 \definecolor{darkblue}{rgb}{0, 0, 0.5}
@@ -287,7 +288,7 @@ All code and data are publicly available.\footnote{Repository link withheld for 
 
 Table~\ref{tab:falsification} summarizes the outcomes of all pre-registered falsification tests across datasets.
 
-\begin{table}[ht]
+\begin{table}[H]
 \centering
 \small
 \begin{tabular}{lll}
@@ -311,7 +312,9 @@ F8 & Generation drift (regression on index) & Slope $\sim 1.5 \times 10^{-5}$, $
 \section{Neutral prompt categories}
 \label{app:neutral}
 
-\begin{table}[ht]
+Table~\ref{tab:neutral} shows ED values for each neutral prompt category, averaged across the three main transformers and separately for Mamba2.
+
+\begin{table}[H]
 \centering
 \small
 \begin{tabular}{lcc}
@@ -332,7 +335,9 @@ Empty string & 0.314 & 0.704 \\
 \section{Domain-level ED profiles}
 \label{app:domains}
 
-\begin{table}[ht]
+Table~\ref{tab:domains} reports ED by semantic domain across models. All values are averaged over three temperature conditions.
+
+\begin{table}[H]
 \centering
 \small
 \begin{tabular}{lcccc}
@@ -352,7 +357,9 @@ Wikipedia & 0.337 & 0.329 & 0.337 & 0.662 \\
 \section{Multilingual tokenizer analysis}
 \label{app:tokenizer}
 
-\begin{table}[ht]
+Table~\ref{tab:multilingual} presents ED alongside tokenizer properties for each language. The key finding is the dissociation between tokenizer-level metrics (fertility, vocabulary allocation) and ED.
+
+\begin{table}[H]
 \centering
 \small
 \begin{tabular}{lccccc}
